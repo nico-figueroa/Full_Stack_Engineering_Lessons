@@ -5,6 +5,8 @@
 .env.development
 .env.production
 .env.test
+data.sql
+schema.sql
 
 # 🔒 Certificates and keys
 *.pem
