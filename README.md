@@ -1,6 +1,8 @@
-# 🎓 Codecademy ![Codecademy](https://img.shields.io/badge/Codecademy-Learning-blue) Lessons
+# 🎓 Full_Stack_Engineering_Lessons
 
-A collection of coursework, exercises, and projects completed throughout Codecademy's curriculum. This repository reflects my progression in designing, building, refactoring, testing, and maintaining front-end, back-end, API, database, and full-stack applications.
+![Codecademy](https://img.shields.io/badge/Codecademy-Learning-blue)
+
+A collection of full-stack engineering coursework, exercises, and projects completed throughout Codecademy's curriculum. This repository reflects my progression in designing, building, refactoring, testing, and maintaining front-end, back-end, API, database, and full-stack applications.
 
 ## 📘 About This Repository
 
