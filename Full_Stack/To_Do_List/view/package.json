@@ -5,9 +5,9 @@
   "dependencies": {
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.7",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "@testing-library/user-event": "^14.6.8",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-scripts": "5.0.1",
     "web-vitals": "^6.2.3"
   },
@@ -37,9 +37,9 @@
   },
   "devDependencies": {
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-prettier": "^5.5.7",
     "eslint-plugin-react": "^7.37.5",
-    "prettier": "^3.9.9"
+    "prettier": "^3.9.10"
   },
   "proxy": "http://localhost:8000"
 }
