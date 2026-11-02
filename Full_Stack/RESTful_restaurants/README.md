@@ -81,6 +81,27 @@ The frontend runs on the Vite development server on port 3001. The backend liste
 
 Configure the Render frontend service with `VITE_API_URL` set to the backend URL, and configure the backend service with `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
 
+### Consolidated database schema
+
+All four tables now live in the `restaurants` schema. The shared client in
+`backend/provider/supabase.js` sets `db.schema` to `restaurants`, so existing
+reads and writes (including relationship queries) target that schema without
+route or query rewrites.
+
+This backend uses Supabase's HTTP Data API, not a PostgreSQL pool, so SQL
+`search_path` and pooler URLs do not apply. Keep the existing server-side
+environment variables. In Supabase's Data API settings, `restaurants` must be
+an exposed schema, and the server key's role must have schema `USAGE` and the
+required object privileges. Otherwise requests will return API errors. Do not
+grant public/anonymous access to fix a server-role permission problem; review
+RLS and access policies when exposing a schema. This change does not modify
+schemas, grants, RLS, or data.
+
+After redeploying, check `GET /restaurants`, `GET /restaurants/:id`,
+`GET /categories`, and `GET /restaurants/starred`. A local regression test
+verifies read/write schema headers without network access:
+`node --test test/supabase.test.js` from `backend/`.
+
 The frontend uses browser-based routes. For a Render Static Site, add a rewrite rule from `/*` to `/index.html` so direct visits and refreshes on the four page URLs load the React app.
 
 ## Scripts

@@ -72,6 +72,29 @@ E_Commerce_App/
 
 ## Local development setup
 
+### Consolidated database schema
+
+The shared `pg` pool in `backend/src/db.js` awaits `SET search_path TO
+nomadant_tech, public` on every new connection, including replacement connections.
+Both `pool.query()` and checked-out clients (transactions and seed scripts) use
+this path. A missing or inaccessible `nomadant_tech` schema rejects the connection
+instead of falling back to `public`.
+
+For Render, keep `DATABASE_URL` in the environment and use the Supabase **shared
+session pooler on port 5432**, which supports IPv4. Do not use the transaction
+pooler on port 6543: session settings do not reliably persist between transactions.
+Keep `DB_SSL=true`. No credentials or database objects are changed by this fix.
+
+The schema and tables must already exist, including in local/test databases.
+The database role needs schema `USAGE` plus the existing table/sequence privileges.
+`public` remains a fallback for shared objects; do not allow untrusted users to
+create objects in either schema. Standalone SQL tools do not use this pool and
+must set their own search path. Existing integration tests drop and recreate
+tables: run them only against a disposable test database, never production.
+
+After redeploying, check `GET /products`, `GET /products/:id`, authenticated
+`GET /carts/me` (not `/cart`), and authenticated `GET /orders`.
+
 1. **Database**: create a PostgreSQL database and apply
    `backend/migration_001_oauth_stripe_images.sql` (plus any earlier/base
    schema migrations) against it. Run `npm run seed:dev` from `backend/` to
@@ -116,8 +139,8 @@ E_Commerce_App/
    - Root Directory: `Full_Stack/E_Commerce_App/backend`
    - Build Command: `npm install`
    - Start Command: `npm start`
-   - Environment variables: `DATABASE_URL` (Render managed Postgres external
-     URL) or discrete `DB_*` vars, `DB_SSL=true`, `JWT_SECRET`,
+   - Environment variables: `DATABASE_URL` (Supabase shared session-pooler URL,
+     port 5432), `DB_SSL=true`, `JWT_SECRET`,
      `FRONTEND_URL` (deployed frontend URL), `CORS_ORIGIN` (deployed frontend
      URL), `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`,
      `GITHUB_REDIRECT_URI` (`https://<backend>.onrender.com/auth/oauth/github/callback`),
@@ -129,10 +152,8 @@ E_Commerce_App/
      `payment_intent.succeeded`, `payment_intent.payment_failed`) — use the
      signing secret it generates for `STRIPE_WEBHOOK_SECRET` in production
      (the Stripe CLI secret is local-only).
-   - Run database migrations against the Render Postgres instance before or
-     during first deploy (e.g. via a one-off Render Shell job or a release
-     command running `psql` against `migration_001_oauth_stripe_images.sql`
-     and any base schema file).
+   - The consolidated database already contains the application tables in
+     `nomadant_tech`; do not recreate or move them during this deployment.
 2. **Frontend — Static Site**
    - Root Directory: `Full_Stack/E_Commerce_App/frontend`
    - Build Command: `npm install && npm run build`

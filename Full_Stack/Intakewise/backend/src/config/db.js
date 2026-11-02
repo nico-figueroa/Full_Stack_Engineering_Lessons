@@ -29,6 +29,13 @@ const pool = new Pool({
   max: Number(process.env.DB_POOL_MAX || 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
+  onConnect: async client => {
+    await client.query("SET search_path TO intakewise, public");
+    const { rows } = await client.query("SELECT current_schema() AS schema");
+    if (rows[0].schema !== "intakewise") {
+      throw new Error("Database schema intakewise is missing or inaccessible");
+    }
+  },
 });
 
 pool.on("error", error => console.error("Unexpected PostgreSQL pool error", error));

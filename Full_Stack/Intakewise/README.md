@@ -120,6 +120,32 @@ CLIENT_ORIGIN=http://localhost:5173
 
 `DATABASE_SSL=true` enables TLS with certificate verification. If a provider requires a custom root CA, set `DATABASE_SSL_CA_FILE` to the path of its `.crt` file, or set `DATABASE_SSL_CA` to the PEM text (literal `\n` sequences are converted to newlines). The backend fails at startup if `DATABASE_SSL_CA_FILE` points to a file that can't be read. Use TLS for managed database connections.
 
+### Consolidated database schema
+
+The shared pool in `backend/src/config/db.js` awaits `SET search_path TO
+intakewise, public` on every new connection, including replacements. Both
+`pool.query()` and checked-out clients use this path, so existing transactions
+and the startup migration runner resolve tables and `schema_migrations` in
+`intakewise`. Its `current_schema()` introspection also uses `intakewise`.
+Connections fail explicitly if that schema is missing or inaccessible.
+
+On Render, keep `DATABASE_URL` in the environment and use Supabase's **shared
+session pooler on port 5432** for IPv4 connectivity, with `DATABASE_SSL=true`.
+Do not use the transaction pooler on port 6543: it cannot guarantee these
+session settings persist between transactions. The schema must already exist
+in local/test databases too, and the role needs schema `USAGE` and existing
+table/sequence privileges. No tables, grants, or migration files are changed.
+Startup still applies any pending existing migrations; verify the consolidated
+`intakewise.schema_migrations` ledger before redeploying.
+
+`public` remains a fallback for shared objects; neither schema should allow
+untrusted object creation. Standalone SQL tools need their own search path.
+The migration guide below describes the historical pre-consolidation import;
+do not rerun its `public`-qualified dumps against the consolidated database.
+
+After redeploying, sign in and check `/api/auth/me`, `/api/items`,
+`/api/schedule?from=YYYY-MM-DD&to=YYYY-MM-DD`, `/api/overrides`, and `/api/stock`.
+
 `frontend/.env`:
 
 ```dotenv
