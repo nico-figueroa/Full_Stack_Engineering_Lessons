@@ -72,6 +72,21 @@ E_Commerce_App/
 
 ## Local development setup
 
+### Backend wake-up feedback
+
+The storefront checks `GET /health` on page load and on pointer, keyboard,
+scroll, focus, and tab-return interactions when its last successful check is
+over five minutes old. An accessible, non-blocking banner explains that the
+backend is being initiated. API requests share the same wake-up promise and
+wait before being sent; writes are not automatically replayed. Following
+Intakewise's polling approach, checks have a 10-second per-request timeout,
+exponential backoff capped at eight seconds, and a two-minute overall limit.
+Failures show an alert with a reload/retry action. No idle keep-alive runs.
+
+Set `VITE_API_BASE_URL` to the backend origin before building the frontend,
+and include the frontend origin in the backend's `CORS_ORIGIN`. The health
+endpoint checks process readiness only, not database availability.
+
 ### Consolidated database schema
 
 The shared `pg` pool in `backend/src/db.js` awaits `SET search_path TO

@@ -76,6 +76,25 @@ The frontend runs on the Vite development server on port 3001. The backend liste
 
 ## Deployment
 
+### Backend wake-up and API documentation
+
+The frontend checks `GET /health` on page load and on pointer, keyboard,
+scroll, focus, and tab-return interactions when its last successful check is
+over five minutes old. An accessible, non-blocking banner explains that the
+backend is being initiated. All API requests wait for the same in-flight
+check before being sent; writes are not automatically replayed. As in
+Intakewise, polling uses a 10-second per-request timeout, exponential backoff
+capped at eight seconds, and a two-minute overall limit. Failures show an
+alert with a reload/retry action. No idle keep-alive runs.
+
+The backend root `/` is the interactive Swagger UI landing page
+(`/api-docs` redirects there). Download the OpenAPI 3.0 specification at
+`/openapi.json`; its source is `backend/openapi.json`. The specification
+documents current request fields, response formats, and status codes,
+including the API's existing plain-text responses. Interactive writes affect
+the shared database, so use them carefully. `GET /health` is a lightweight
+process check and does not query Supabase.
+
 - Frontend: [React App](https://restful-restaurants-frontend-xjlj.onrender.com/)
 - Backend: [restful-restaurants-backend-2ygw.onrender.com](https://restful-restaurants-backend-2ygw.onrender.com/)
 
@@ -119,3 +138,4 @@ From `frontend`:
 From `backend`:
 
 - `npm start` — start the API server
+- `npm test` — run API documentation and Supabase client tests

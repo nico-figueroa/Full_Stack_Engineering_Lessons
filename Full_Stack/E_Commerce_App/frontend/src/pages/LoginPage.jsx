@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { githubOAuthStartUrl } from "../api/auth.js";
 import Alert from "../components/Alert.jsx";
+import { backend } from "../api/client.js";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -30,10 +31,19 @@ export default function LoginPage() {
     }
   }
 
-  function handleGithubLogin() {
+  async function handleGithubLogin() {
     // Real OAuth requires a full-page redirect so GitHub can show its own
     // consent screen - this cannot be done with fetch/XHR.
-    window.location.href = githubOAuthStartUrl();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await backend.ensureReady();
+      window.location.href = githubOAuthStartUrl();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -56,6 +66,7 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={handleGithubLogin}
+          disabled={isSubmitting}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
         >
           <GitHubIcon /> Continue with GitHub

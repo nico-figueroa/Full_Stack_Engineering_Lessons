@@ -65,6 +65,10 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
 // Health check
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.get("/", (req, res) => {
   const docs = `${req.protocol}://${req.get("host")}/api-docs`;
   if (req.accepts(["json", "html"]) === "html") {

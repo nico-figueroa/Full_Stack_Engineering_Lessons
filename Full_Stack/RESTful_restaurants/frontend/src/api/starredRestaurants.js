@@ -1,4 +1,4 @@
-import { API_ENDPOINT } from ".";
+import { API_ENDPOINT, apiFetch } from ".";
 
 const BASE_API_ROUTE = `${API_ENDPOINT}/restaurants/starred`;
 
@@ -25,19 +25,19 @@ const readResponse = async (response, { expectJson = true } = {}) => {
 };
 
 export const getStarredRestaurants = async () => {
-  const response = await fetch(BASE_API_ROUTE);
+  const response = await apiFetch(BASE_API_ROUTE);
   const result = await readResponse(response);
   return result.data;
 };
 
 export const unstarRestaurant = async (id) => {
-  const response = await fetch(`${BASE_API_ROUTE}/${id}`, { method: "DELETE" });
+  const response = await apiFetch(`${BASE_API_ROUTE}/${id}`, { method: "DELETE" });
   const result = await readResponse(response, { expectJson: false });
   return result.status;
 };
 
 export const updateComment = async (id, newComment) => {
-  const response = await fetch(`${BASE_API_ROUTE}/${id}`, {
+  const response = await apiFetch(`${BASE_API_ROUTE}/${id}`, {
     method: "PUT",
     body: JSON.stringify({ newComment }),
     headers: { "Content-Type": "application/json" },

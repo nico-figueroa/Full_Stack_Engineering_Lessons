@@ -1,4 +1,4 @@
-import { API_ENDPOINT } from ".";
+import { API_ENDPOINT, apiFetch } from ".";
 
 const readResponse = async (response, { expectJson = true } = {}) => {
   const text = await response.text();
@@ -23,13 +23,13 @@ const readResponse = async (response, { expectJson = true } = {}) => {
 };
 
 export const getRestaurants = async () => {
-  const response = await fetch(`${API_ENDPOINT}/restaurants`);
+  const response = await apiFetch(`${API_ENDPOINT}/restaurants`);
   const result = await readResponse(response);
   return result.data;
 };
 
 export const addNewRestaurant = async (newName) => {
-  const response = await fetch(`${API_ENDPOINT}/restaurants`, {
+  const response = await apiFetch(`${API_ENDPOINT}/restaurants`, {
     method: "POST",
     body: JSON.stringify({ name: newName }),
     headers: { "Content-Type": "application/json" },
@@ -40,7 +40,7 @@ export const addNewRestaurant = async (newName) => {
 };
 
 export const deleteRestaurant = async (id) => {
-  const response = await fetch(`${API_ENDPOINT}/restaurants/${id}`, {
+  const response = await apiFetch(`${API_ENDPOINT}/restaurants/${id}`, {
     method: "DELETE",
   });
   const result = await readResponse(response, { expectJson: false });
@@ -48,7 +48,7 @@ export const deleteRestaurant = async (id) => {
 };
 
 export const updateRestaurantName = async (id, newName) => {
-  const response = await fetch(`${API_ENDPOINT}/restaurants/${id}`, {
+  const response = await apiFetch(`${API_ENDPOINT}/restaurants/${id}`, {
     method: "PUT",
     body: JSON.stringify({ newName }),
     headers: { "Content-Type": "application/json" },
@@ -58,7 +58,7 @@ export const updateRestaurantName = async (id, newName) => {
 };
 
 export const starRestaurant = async (id) => {
-  const response = await fetch(`${API_ENDPOINT}/restaurants/starred`, {
+  const response = await apiFetch(`${API_ENDPOINT}/restaurants/starred`, {
     method: "POST",
     body: JSON.stringify({ restaurantId: id }),
     headers: { "Content-Type": "application/json" },
