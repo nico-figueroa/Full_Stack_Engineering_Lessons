@@ -38,6 +38,26 @@
     }
   ],
   "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Documentation"],
+        "summary": "Check API process readiness without querying the database",
+        "responses": {
+          "200": {
+            "description": "API is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": { "status": { "type": "string", "const": "ok" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/openapi.json": {
       "get": {
         "tags": [
