@@ -1,0 +1,423 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "RESTful Restaurants API",
+    "version": "1.0.0",
+    "description": "Manage restaurants, categories, category assignments, and starred restaurants. This demo API has no authentication; interactive requests modify shared data. Names are trimmed, non-empty, at most 100 characters, and cannot contain control characters. Comments are trimmed, at most 500 characters, and only allow tabs and line breaks as control characters."
+  },
+  "servers": [{ "url": "/", "description": "Current API host" }],
+  "tags": [
+    { "name": "Service" },
+    { "name": "Restaurants" },
+    { "name": "Categories" },
+    { "name": "Starred restaurants" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Service"],
+        "summary": "Check that the API process is ready (does not query Supabase)",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "API is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": { "status": { "type": "string", "enum": ["ok"] } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": ["Service"],
+        "summary": "Download this OpenAPI specification",
+        "operationId": "getOpenApi",
+        "responses": {
+          "200": {
+            "description": "OpenAPI document",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/restaurants": {
+      "get": {
+        "tags": ["Restaurants"],
+        "summary": "List restaurants ordered by name",
+        "operationId": "listRestaurants",
+        "responses": {
+          "200": {
+            "description": "Restaurants",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Restaurant" } } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "tags": ["Restaurants"],
+        "summary": "Create a restaurant",
+        "operationId": "createRestaurant",
+        "requestBody": { "$ref": "#/components/requestBodies/Name" },
+        "responses": {
+          "200": {
+            "description": "Created restaurant (the existing API returns 200)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Restaurant" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/restaurants/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": {
+        "tags": ["Restaurants"],
+        "summary": "Get a restaurant",
+        "operationId": "getRestaurant",
+        "responses": {
+          "200": {
+            "description": "Restaurant",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Restaurant" } } }
+          },
+          "404": { "$ref": "#/components/responses/TextNotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Restaurants"],
+        "summary": "Rename a restaurant",
+        "operationId": "renameRestaurant",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["newName"],
+                "properties": { "newName": { "$ref": "#/components/schemas/Name" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/TextOk" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/TextNotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Restaurants"],
+        "summary": "Delete a restaurant and its category assignments",
+        "operationId": "deleteRestaurant",
+        "responses": {
+          "200": { "$ref": "#/components/responses/TextOk" },
+          "404": { "$ref": "#/components/responses/TextNotFound" }
+        }
+      }
+    },
+    "/restaurants/starred": {
+      "get": {
+        "tags": ["Starred restaurants"],
+        "summary": "List starred restaurants with their names",
+        "operationId": "listStarredRestaurants",
+        "responses": {
+          "200": {
+            "description": "Starred restaurants",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/StarredRestaurant" } } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "tags": ["Starred restaurants"],
+        "summary": "Star a restaurant, optionally with a comment",
+        "operationId": "starRestaurant",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["restaurantId"],
+                "properties": {
+                  "restaurantId": { "$ref": "#/components/schemas/Id" },
+                  "comment": { "type": "string", "nullable": true, "maxLength": 500, "default": "" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created starred restaurant",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StarredRestaurant" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/restaurants/starred/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": {
+        "tags": ["Starred restaurants"],
+        "summary": "Get a starred restaurant by its starred entry ID",
+        "operationId": "getStarredRestaurant",
+        "responses": {
+          "200": {
+            "description": "Starred restaurant",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StarredRestaurant" } } }
+          },
+          "404": { "$ref": "#/components/responses/TextNotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Starred restaurants"],
+        "summary": "Update a starred entry's comment",
+        "operationId": "updateStarredComment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["newComment"],
+                "properties": { "newComment": { "$ref": "#/components/schemas/Comment" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated starred entry (without the joined restaurant name)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StarredEntry" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/TextNotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Starred restaurants"],
+        "summary": "Unstar a restaurant by its starred entry ID",
+        "operationId": "unstarRestaurant",
+        "responses": {
+          "200": { "$ref": "#/components/responses/TextOk" },
+          "404": { "$ref": "#/components/responses/TextNotFound" }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "tags": ["Categories"],
+        "summary": "List categories ordered by name, including assigned restaurant IDs",
+        "operationId": "listCategories",
+        "responses": {
+          "200": {
+            "description": "Categories with assignments",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CategoryWithRestaurants" } } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "tags": ["Categories"],
+        "summary": "Create a category",
+        "operationId": "createCategory",
+        "requestBody": { "$ref": "#/components/requestBodies/Name" },
+        "responses": {
+          "201": {
+            "description": "Created category with an empty restaurantIds array",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryWithRestaurants" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/categories/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": {
+        "tags": ["Categories"],
+        "summary": "Get a category including assigned restaurant IDs",
+        "operationId": "getCategory",
+        "responses": {
+          "200": {
+            "description": "Category with assignments",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryWithRestaurants" } } }
+          },
+          "404": { "$ref": "#/components/responses/CategoryNotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Categories"],
+        "summary": "Rename a category",
+        "operationId": "renameCategory",
+        "requestBody": { "$ref": "#/components/requestBodies/Name" },
+        "responses": {
+          "200": {
+            "description": "Updated category (without restaurantIds)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Category" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/CategoryNotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Categories"],
+        "summary": "Delete a category and its restaurant assignments",
+        "operationId": "deleteCategory",
+        "responses": {
+          "200": {
+            "description": "Deleted category (without restaurantIds)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Category" } } }
+          },
+          "404": { "$ref": "#/components/responses/CategoryNotFound" }
+        }
+      }
+    },
+    "/categories/{id}/assign": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "post": {
+        "tags": ["Categories"],
+        "summary": "Assign a restaurant, removing its previous category assignment",
+        "operationId": "assignRestaurant",
+        "requestBody": { "$ref": "#/components/requestBodies/RestaurantId" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/Assignment" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/categories/{id}/remove": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "post": {
+        "tags": ["Categories"],
+        "summary": "Remove a restaurant from a category",
+        "operationId": "removeRestaurantFromCategory",
+        "requestBody": { "$ref": "#/components/requestBodies/RestaurantId" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/Assignment" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Id": { "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Id" } }
+    },
+    "schemas": {
+      "Id": { "type": "string", "description": "Database record identifier, passed as a string in URLs" },
+      "Name": { "type": "string", "minLength": 1, "maxLength": 100, "example": "Pasta Place" },
+      "Comment": { "type": "string", "maxLength": 500, "example": "Lovely patio" },
+      "Restaurant": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": { "id": { "$ref": "#/components/schemas/Id" }, "name": { "$ref": "#/components/schemas/Name" } }
+      },
+      "Category": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": { "id": { "$ref": "#/components/schemas/Id" }, "name": { "type": "string", "example": "Italian" } }
+      },
+      "CategoryWithRestaurants": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Category" },
+          {
+            "type": "object",
+            "required": ["restaurantIds"],
+            "properties": { "restaurantIds": { "type": "array", "items": { "$ref": "#/components/schemas/Id" } } }
+          }
+        ]
+      },
+      "StarredEntry": {
+        "type": "object",
+        "required": ["id", "restaurantId", "comment"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Id" },
+          "restaurantId": { "$ref": "#/components/schemas/Id" },
+          "comment": { "type": "string", "nullable": true, "maxLength": 500 }
+        }
+      },
+      "StarredRestaurant": {
+        "allOf": [
+          { "$ref": "#/components/schemas/StarredEntry" },
+          { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" } } }
+        ]
+      },
+      "Error": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } }
+    },
+    "requestBodies": {
+      "Name": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["name"],
+              "properties": { "name": { "$ref": "#/components/schemas/Name" } }
+            }
+          }
+        }
+      },
+      "RestaurantId": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["restaurantId"],
+              "properties": { "restaurantId": { "$ref": "#/components/schemas/Id" } }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "Invalid or missing input",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ServerError": {
+        "description": "Database operation failed",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "CategoryNotFound": {
+        "description": "Category not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "TextNotFound": {
+        "description": "Record not found or database operation failed",
+        "content": { "text/plain": { "schema": { "type": "string", "example": "Not Found" } } }
+      },
+      "TextOk": {
+        "description": "Operation completed",
+        "content": { "text/plain": { "schema": { "type": "string", "example": "OK" } } }
+      },
+      "Assignment": {
+        "description": "Assignment operation completed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["message", "categoryId", "restaurantId"],
+              "properties": {
+                "message": { "type": "string" },
+                "categoryId": { "$ref": "#/components/schemas/Id" },
+                "restaurantId": { "$ref": "#/components/schemas/Id" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

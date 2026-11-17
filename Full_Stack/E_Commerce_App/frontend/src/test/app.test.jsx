@@ -6,6 +6,7 @@ import * as auth from "../api/auth.js";
 import * as carts from "../api/carts.js";
 import * as products from "../api/products.js";
 import * as orders from "../api/orders.js";
+import { backend } from "../api/client.js";
 
 vi.mock("../api/auth.js");
 vi.mock("../api/carts.js");
@@ -32,6 +33,22 @@ describe("Requirements: products", () => {
 });
 
 describe("Requirements: authentication", () => {
+  it("waits for backend readiness before redirecting to GitHub", async () => {
+    let ready;
+    const wake = vi.spyOn(backend, "ensureReady")
+      .mockReturnValue(new Promise(resolve => { ready = resolve; }));
+    auth.githubOAuthStartUrl.mockReturnValue("#github-sign-in");
+    renderApp("/login");
+    const button = await screen.findByRole("button", { name: /continue with github/i });
+    await userEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(auth.githubOAuthStartUrl).not.toHaveBeenCalled();
+    ready();
+    await waitFor(() => expect(window.location.hash).toBe("#github-sign-in"));
+    wake.mockRestore();
+    window.location.hash = "";
+  });
+
   it("logs in with email and password", async () => {
     auth.login.mockResolvedValue({ accessToken: "t" });
     auth.fetchCurrentUser.mockResolvedValue(CUSTOMER);

@@ -2,6 +2,12 @@ import request from "supertest";
 import app from "../app.js";
 
 describe("API documentation", () => {
+  test("serves a public process health check", async () => {
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok" });
+  });
+
   test("serves the OpenAPI document", async () => {
     const res = await request(app).get("/openapi.json");
 
