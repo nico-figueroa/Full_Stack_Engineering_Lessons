@@ -24,6 +24,8 @@ Replace these placeholders with current product screenshots:
 ## Features
 
 - Email/password registration and sign-in using bcrypt password hashing.
+- Optional email one-time-code MFA, with expiring and single-use verification challenges.
+- English and Spanish interfaces, with a persisted current-language switcher using U.S. and Costa Rican flags.
 - Short-lived JWT access tokens and rotating, revocable refresh sessions.
 - Account-scoped item, schedule, and override APIs; admin-only user listing.
 - CRUD for medication, supplement, vitamin, custom, and other catalog categories.
@@ -31,7 +33,7 @@ Replace these placeholders with current product screenshots:
 - Month, week, day, and agenda views powered by React Big Calendar.
 - One-time intake edits, additions, and skips from the calendar.
 - Item notes, saved warnings, interaction-profile notes, and reference links.
-- Cached DailyMed and openFDA public drug-label data, when a matching label exists.
+- Cached DailyMed/openFDA labels, RxNorm normalization, NIH ODS supplement fact sheets, PubMed literature, and MedlinePlus patient-education references.
 - Projected stock run-out estimates based on scheduled intakes.
 - Responsive navigation, saved light/dark theme, and toast feedback.
 - PostgreSQL migrations run before the API starts.
@@ -47,15 +49,17 @@ Browser
 Node.js / Express API
   auth · items · schedule · overrides · stock · interactions · reference
        ├── PostgreSQL (users, items, auth sessions, overrides, source caches)
-       ├── DailyMed SPL API (label search and sections)
-       └── openFDA drug-label API (public label fields)
+       ├── DailyMed/openFDA (drug-label sections)
+       ├── RxNorm/NIH ODS/MedlinePlus (normalization and education)
+       ├── PubMed E-utilities (supporting literature references)
+       └── SMTP (reset links and email MFA codes)
 ```
 
 The frontend is in `frontend/`; the API, SQL migrations, and backend tests are in `backend/`. API data is scoped by the authenticated user ID. Database access uses parameterized PostgreSQL queries. `backend/src/server.js` runs the ordered SQL migrations once before accepting requests.
 
 ### Public reference data and safety
 
-The API queries DailyMed and openFDA and caches returned profiles for 24 hours. A label lookup can return no match; a missing section is not evidence that no warning or interaction exists. Reference endpoints include errors when a source is unavailable and do not synthesize clinical recommendations. User-entered notes and warnings are kept distinct from source data. Always consult a pharmacist or healthcare professional.
+The API combines DailyMed and openFDA label fields with RxNorm ingredient normalization, NIH ODS supplement fact sheets, MedlinePlus patient education, and PubMed citations. It caches combined profiles for 24 hours and uses a short process cache for the additional public services. Literature links add context but are not automatically interpreted as interaction conclusions. Reference endpoints include errors when a source is unavailable and never synthesize clinical recommendations. A missing section is not evidence that no warning or interaction exists. User-entered notes and warnings remain distinct from source data. Always consult a pharmacist or healthcare professional.
 
 ### Label matching and manual review
 
@@ -116,6 +120,15 @@ DATABASE_SSL=false
 DB_POOL_MAX=10
 JWT_SECRET=replace-with-a-random-secret-at-least-32-characters
 CLIENT_ORIGIN=http://localhost:5173
+# Password-reset and email-code delivery (required in production)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-smtp-user
+SMTP_PASS=your-smtp-key
+SMTP_FROM=Intakewise <security@example.com>
+PUBLIC_DATA_CONTACT_EMAIL=developer@example.com
+OPENFDA_API_KEY=optional-free-openfda-key
 ```
 
 `DATABASE_SSL=true` enables TLS with certificate verification. If a provider requires a custom root CA, set `DATABASE_SSL_CA_FILE` to the path of its `.crt` file, or set `DATABASE_SSL_CA` to the PEM text (literal `\n` sequences are converted to newlines). The backend fails at startup if `DATABASE_SSL_CA_FILE` points to a file that can't be read. Use TLS for managed database connections.
@@ -154,13 +167,16 @@ VITE_API_URL=http://localhost:5000/api
 
 Vite variables are public and must never contain credentials. The application does not require API keys for DailyMed or openFDA.
 
-### Password reset
+### Password reset and email MFA
 
 1. On the sign-in page choose **Forgot password?**, enter the account email, and submit.
 2. The API stores only a SHA-256 hash of a random token that expires after 60 minutes and can be used once.
-3. No email provider is configured yet. Outside production, the reset link is shown on the page as a **Development reset link** and is also printed in the backend console with a `[password-reset]` prefix.
+3. The API sends the link through the provider-neutral SMTP configuration above. Free transactional tiers are sufficient for a small deployment; verify the sending domain for reliable delivery. Outside production, the link can be shown as a **Development reset link** when `PASSWORD_RESET_EXPOSE_LINK=true`. Production without SMTP fails closed with a 503 instead of pretending an email was sent.
 4. Open the link (`/reset-password?token=...`), enter a new password (minimum 8 characters) twice, and submit. All existing refresh sessions for that user are revoked, so the user signs in again.
-5. Admins can issue a link for any account with `POST /api/admin/users/{id}/password-reset`, which returns `{ email, resetUrl, expiresAt }`.
+5. Admins can issue a reset for any account with `POST /api/admin/users/{id}/password-reset`. The reset link is emailed; it is included in the response only when link exposure is explicitly enabled.
+6. Email security codes are opt-in. Users are prompted after sign-in to visit **Profile → Email security codes**. Enabling them sends a six-digit enrollment code; later sign-ins require a code from the registered email. Codes are hashed with the JWT secret, expire after 10 minutes, permit at most five attempts, and are consumed once. Disabling them requires the current password.
+
+True SMS MFA is not included because SMS delivery cannot meet the zero-cost requirement. Supabase supports phone MFA, but a production SMS provider/carrier still bills per message. The implemented email-code flow is zero-cost when used within a free transactional-email allowance and works from Render.
 
 Optional backend variables:
 
@@ -172,18 +188,23 @@ PASSWORD_RESET_URL_BASE=http://localhost:5173
 ```
 
 Migration `007_create_password_reset_tokens.sql` runs automatically the next time the backend starts.
+Migration `008_create_email_mfa.sql` enforces the existing required email field, adds email-code enrollment state and challenges, and safely handles the requested `nitem18@hotmail.com` legacy assignment when exactly one passwordless account exists and that address is unused. The currently inspected shared Supabase database has two Intakewise users and neither is passwordless, so no existing email was changed.
 
-Hardening still to do before relying on this in production: send links through an email provider, keep `PASSWORD_RESET_EXPOSE_LINK=false` in production, add stricter per-endpoint rate limits for reset requests, and add audit logging for reset issuance and use.
+Keep `PASSWORD_RESET_EXPOSE_LINK=false` and the SMTP variables configured in production. Authentication routes share a 20-request-per-15-minute limiter; increase or specialize this policy if production traffic requires it.
 
 ## API summary
 
-All routes except registration, login, refresh, logout, forgot/reset password, and health require `Authorization: Bearer <accessToken>`. Successful JSON responses are shown schematically.
+All routes except registration, login, refresh, logout, email-code login verification, forgot/reset password, and health require `Authorization: Bearer <accessToken>`. Successful JSON responses are shown schematically.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | API liveness |
 | `POST` | `/api/auth/register` | Create a user account and session |
 | `POST` | `/api/auth/login` | Authenticate and create access/refresh tokens |
+| `POST` | `/api/auth/mfa/verify` | Complete an MFA sign-in with an emailed one-time code |
+| `POST` | `/api/auth/mfa/enroll` | Send an MFA enrollment code to the signed-in user |
+| `POST` | `/api/auth/mfa/enroll/verify` | Verify enrollment and enable email MFA |
+| `POST` | `/api/auth/mfa/disable` | Disable MFA after confirming the current password |
 | `POST` | `/api/auth/refresh` | Rotate an active refresh token |
 | `POST` | `/api/auth/logout` | Revoke a refresh session |
 | `POST` | `/api/auth/forgot-password` | Request a password-reset link (generic response) |
@@ -199,8 +220,8 @@ All routes except registration, login, refresh, logout, forgot/reset password, a
 | `POST` | `/api/overrides` | Add or replace an intake override |
 | `PUT` | `/api/overrides/:id` | Update an owned override |
 | `DELETE` | `/api/overrides/:id` | Remove an override |
-| `GET` | `/api/interactions` | Retrieve saved and DailyMed label warnings |
-| `GET` | `/api/reference/:itemId` | Retrieve a cached official label profile |
+| `GET` | `/api/interactions` | Retrieve saved/label warnings plus supporting evidence links |
+| `GET` | `/api/reference/:itemId` | Retrieve combined label, supplement, literature, and patient-education references |
 | `GET` | `/api/reference/:itemId/candidates?q=` | List scored DailyMed label candidates for manual review |
 | `PUT` | `/api/reference/:itemId/match` | Confirm a label (`confirmed` + `setid`), set `no_label`, or reset to `auto` |
 | `GET` | `/api/stock` | Read on-hand quantity and estimated run-out |

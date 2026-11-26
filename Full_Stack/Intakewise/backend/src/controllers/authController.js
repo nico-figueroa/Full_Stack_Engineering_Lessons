@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import pool from "../config/db.js";
+import { emailDeliveryIsConfigured, sendPasswordResetEmail } from "../services/emailService.js";
+import { issueEmailMfaChallenge, verifyEmailMfaChallenge } from "../services/emailMfaService.js";
 
 const credentialsSchema = z.object({
   email: z.string().trim().email().max(254).transform(value => value.toLowerCase()),
@@ -37,7 +39,7 @@ export async function register(req, res) {
   const result = await pool.query(
     `INSERT INTO users (email, password_hash, timezone, name)
      VALUES ($1, $2, $3, $4)
-     RETURNING id, email, timezone, name, role`,
+     RETURNING id, email, timezone, name, role, email_mfa_enabled`,
     [input.email, passwordHash, input.timezone || null, input.name || null]
   );
   res.status(201).json({ user: result.rows[0], ...await createTokens(result.rows[0]) });
@@ -46,14 +48,20 @@ export async function register(req, res) {
 export async function login(req, res) {
   const { email, password } = credentialsSchema.parse(req.body);
   const result = await pool.query(
-    `SELECT id, email, password_hash, timezone, name, role FROM users WHERE email = $1`,
+    `SELECT id, email, password_hash, timezone, name, role, email_mfa_enabled
+     FROM users WHERE email = $1`,
     [email]
   );
 
   const user = result.rows[0];
-  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+  if (!user || !user.password_hash) return res.status(401).json({ error: "Invalid credentials" });
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) return res.status(401).json({ error: "Invalid credentials" });
+
+  if (user.email_mfa_enabled) {
+    const challenge = await issueEmailMfaChallenge(user, "login");
+    return res.json({ mfaRequired: true, ...challenge });
+  }
 
   const { password_hash: _passwordHash, ...publicUser } = user;
   res.json({ user: publicUser, ...await createTokens(user) });
@@ -72,7 +80,7 @@ export async function refresh(req, res) {
   }
 
   const result = await pool.query(
-    `SELECT u.id, u.email, u.timezone, u.name, u.role
+    `SELECT u.id, u.email, u.timezone, u.name, u.role, u.email_mfa_enabled
      FROM users u JOIN auth_sessions s ON s.user_id = u.id
      WHERE u.id = $1 AND s.id = $2 AND s.revoked_at IS NULL AND s.expires_at > NOW()`,
     [claims.id, claims.jti]
@@ -103,7 +111,7 @@ export async function logout(req, res) {
   res.status(204).end();
 }
 
-const RESET_TOKEN_TTL_MINUTES = 60;
+export const RESET_TOKEN_TTL_MINUTES = 60;
 const genericResetMessage = "If an account exists for that email, a password reset link has been issued.";
 
 const hashResetToken = token => createHash("sha256").update(token).digest("hex");
@@ -139,13 +147,29 @@ export async function issuePasswordReset(userId) {
 }
 
 export async function forgotPassword(req, res) {
+  if (process.env.NODE_ENV === "production" && !emailDeliveryIsConfigured()
+    && process.env.PASSWORD_RESET_EXPOSE_LINK !== "true") {
+    return res.status(503).json({ error: "Email delivery is temporarily unavailable. Please try again later." });
+  }
   const { email } = z.object({ email: credentialsSchema.shape.email }).parse(req.body);
   const result = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
   const user = result.rows[0];
   if (!user) return res.json({ message: genericResetMessage });
 
   const reset = await issuePasswordReset(user.id);
-  console.info(`[password-reset] Reset link for ${email} (valid ${RESET_TOKEN_TTL_MINUTES} min): ${reset.resetUrl}`);
+  try {
+    if (emailDeliveryIsConfigured()) {
+      await sendPasswordResetEmail({ email, resetUrl: reset.resetUrl, minutes: RESET_TOKEN_TTL_MINUTES });
+    } else if (shouldExposeResetLink()) {
+      console.info(`[password-reset] Development reset link for ${email}: ${reset.resetUrl}`);
+    }
+  } catch (error) {
+    await pool.query(
+      "UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL",
+      [user.id],
+    );
+    throw error;
+  }
   res.json(shouldExposeResetLink()
     ? { message: genericResetMessage, resetUrl: reset.resetUrl, expiresAt: reset.expiresAt }
     : { message: genericResetMessage });
@@ -182,10 +206,76 @@ export async function resetPassword(req, res) {
 
 export async function me(req, res) {
   const result = await pool.query(
-    `SELECT id, email, timezone, name, role FROM users WHERE id = $1`,
+    `SELECT id, email, timezone, name, role, email_mfa_enabled FROM users WHERE id = $1`,
     [req.user.id]
   );
 
   if (!result.rows[0]) return res.status(404).json({ error: "Account not found" });
   res.json({ user: result.rows[0] });
+}
+
+export async function verifyLoginMfa(req, res) {
+  const input = z.object({
+    challengeId: z.string().uuid(),
+    code: z.string().trim().regex(/^\d{6}$/),
+  }).parse(req.body);
+  const userId = await verifyEmailMfaChallenge({
+    ...input,
+    purpose: "login",
+  });
+  const result = await pool.query(
+    `SELECT id, email, timezone, name, role, email_mfa_enabled
+     FROM users WHERE id = $1 AND email_mfa_enabled = TRUE`,
+    [userId],
+  );
+  if (!result.rows[0]) return res.status(401).json({ error: "Security challenge is no longer valid" });
+  res.json({ user: result.rows[0], ...await createTokens(result.rows[0]) });
+}
+
+export async function beginMfaEnrollment(req, res) {
+  const result = await pool.query(
+    "SELECT id, email FROM users WHERE id = $1",
+    [req.user.id],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Account not found" });
+  res.json(await issueEmailMfaChallenge(result.rows[0], "enrollment"));
+}
+
+export async function completeMfaEnrollment(req, res) {
+  const input = z.object({
+    challengeId: z.string().uuid(),
+    code: z.string().trim().regex(/^\d{6}$/),
+  }).parse(req.body);
+  await verifyEmailMfaChallenge({
+    ...input,
+    purpose: "enrollment",
+    userId: req.user.id,
+  });
+  await pool.query(
+    `UPDATE users SET email_mfa_enabled = TRUE, email_mfa_enabled_at = NOW(), updated_at = NOW()
+     WHERE id = $1`,
+    [req.user.id],
+  );
+  res.json({ message: "Email security codes are enabled.", email_mfa_enabled: true });
+}
+
+export async function disableMfa(req, res) {
+  const { password } = z.object({ password: credentialsSchema.shape.password }).parse(req.body);
+  const result = await pool.query(
+    "SELECT password_hash FROM users WHERE id = $1",
+    [req.user.id],
+  );
+  if (!result.rows[0] || !await bcrypt.compare(password, result.rows[0].password_hash)) {
+    return res.status(401).json({ error: "The password is incorrect." });
+  }
+  await pool.query(
+    `UPDATE users SET email_mfa_enabled = FALSE, email_mfa_enabled_at = NULL, updated_at = NOW()
+     WHERE id = $1`,
+    [req.user.id],
+  );
+  await pool.query(
+    "UPDATE email_mfa_challenges SET consumed_at = NOW() WHERE user_id = $1 AND consumed_at IS NULL",
+    [req.user.id],
+  );
+  res.json({ message: "Email security codes are disabled.", email_mfa_enabled: false });
 }

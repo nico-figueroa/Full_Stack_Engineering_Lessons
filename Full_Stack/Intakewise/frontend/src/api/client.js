@@ -5,7 +5,7 @@ const REFRESH_KEY = "drug-intake-refresh";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-  timeout: 15000,
+  timeout: 30000,
 });
 
 export function setSession({ accessToken, refreshToken }) {
@@ -48,7 +48,8 @@ api.interceptors.response.use(
   async error => {
     const request = error.config;
     if (error.response?.status !== 401 || !request || request._retried ||
-      request.url?.includes("/auth/login") || request.url?.includes("/auth/refresh")) {
+      request.url?.includes("/auth/login") || request.url?.includes("/auth/refresh")
+      || request.url?.includes("/auth/mfa/verify")) {
       return Promise.reject(error);
     }
 

@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
+import useLanguage from "../../context/useLanguage.js";
 
 export default function Modal({ open, title, children, onClose, className = "" }) {
+  const { t } = useLanguage();
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
@@ -15,7 +17,7 @@ export default function Modal({ open, title, children, onClose, className = "" }
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close dialog"
+              aria-label={t("common.close")}
               className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
             >
               ✕

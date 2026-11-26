@@ -1,7 +1,7 @@
 import { fetchSplList, fetchSplListByNdc } from "./dailymedSplService.js";
 
 export const MATCH_STATUSES = ["auto", "confirmed", "needs_review", "no_label"];
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const AMBIGUITY_WINDOW = 10;
 const MIN_AUTO_SCORE = 35;
 const COSMETIC_CHECK_CATEGORIES = new Set(["medication", "supplement", "vitamin"]);

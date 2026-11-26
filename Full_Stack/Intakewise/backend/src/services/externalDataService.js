@@ -3,6 +3,7 @@ import { fetchSplXml } from "./dailymedSplService.js";
 import { extractInteractionsFromSplXml } from "./dailymedExtractor.js";
 import { matchCacheKey, resolveDailyMedLabel } from "./labelMatcher.js";
 import { persistAutomaticMatchStatus } from "./matchStatusStore.js";
+import { getBroaderEvidence } from "./broaderEvidenceService.js";
 
 const CACHE_HOURS = 24;
 
@@ -23,7 +24,14 @@ export async function getExternalInteractionsForItem(item) {
   let warnings = [];
   let cacheable = true;
   try {
-    const resolution = await resolveDailyMedLabel(item);
+    let resolution = await resolveDailyMedLabel(item);
+    if (!resolution.selected && resolution.status === "needs_review") {
+      const evidence = await getBroaderEvidence(item);
+      if (evidence.normalization?.name && evidence.normalization.name !== item.name) {
+        const normalizedResolution = await resolveDailyMedLabel(item, { query: evidence.normalization.name });
+        if (normalizedResolution.selected) resolution = normalizedResolution;
+      }
+    }
     await persistAutomaticMatchStatus(item, resolution);
     const splId = resolution.selected?.setid;
     if (splId) {
