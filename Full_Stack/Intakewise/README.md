@@ -11,8 +11,6 @@ Intakewise is a responsive organizer for medication, supplement, vitamin, and cu
 
 ## Screenshots
 
-Replace these placeholders with current product screenshots:
-
 | Dashboard | Calendar |
 | --- | --- |
 | ![Dashboard screenshot placeholder](./docs/screenshots/dashboard.png) | ![Calendar screenshot placeholder](./docs/screenshots/calendar.png) |
