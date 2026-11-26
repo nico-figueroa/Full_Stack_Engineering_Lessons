@@ -25,11 +25,34 @@ services:
         value: "5"
       - key: JWT_SECRET
         generateValue: true
+      - key: NODE_ENV
+        value: production
       - key: CLIENT_ORIGIN
         fromService:
           name: intakewise
           type: web
           property: host
+      - key: PASSWORD_RESET_URL_BASE
+        value: https://intakewise.onrender.com
+      - key: PASSWORD_RESET_EXPOSE_LINK
+        value: "false"
+      # A free SMTP provider (for example Brevo) can supply these values.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: PUBLIC_DATA_CONTACT_EMAIL
+        sync: false
+      - key: OPENFDA_API_KEY
+        sync: false
 
   - type: web
     name: intakewise

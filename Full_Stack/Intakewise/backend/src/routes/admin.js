@@ -2,7 +2,12 @@ import express from "express";
 import { z } from "zod";
 import pool from "../config/db.js";
 import auth, { requireRole } from "../middleware/auth.js";
-import { issuePasswordReset } from "../controllers/authController.js";
+import {
+  issuePasswordReset,
+  RESET_TOKEN_TTL_MINUTES,
+  shouldExposeResetLink,
+} from "../controllers/authController.js";
+import { emailDeliveryIsConfigured, sendPasswordResetEmail } from "../services/emailService.js";
 
 const router = express.Router();
 router.get("/users", auth, requireRole("admin"), async (req, res) => {
@@ -18,8 +23,21 @@ router.post("/users/:id/password-reset", auth, requireRole("admin"), async (req,
   const user = result.rows[0];
   if (!user) return res.status(404).json({ error: "User not found" });
   const reset = await issuePasswordReset(user.id);
-  console.info(`[password-reset] Admin ${req.user.id} issued a reset link for ${user.email}: ${reset.resetUrl}`);
-  res.status(201).json({ email: user.email, resetUrl: reset.resetUrl, expiresAt: reset.expiresAt });
+  if (emailDeliveryIsConfigured()) {
+    await sendPasswordResetEmail({
+      email: user.email,
+      resetUrl: reset.resetUrl,
+      minutes: RESET_TOKEN_TTL_MINUTES,
+    });
+  } else if (process.env.NODE_ENV === "production" && !shouldExposeResetLink()) {
+    await pool.query("UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL", [user.id]);
+    return res.status(503).json({ error: "Email delivery is temporarily unavailable." });
+  }
+  res.status(201).json({
+    email: user.email,
+    ...(shouldExposeResetLink() ? { resetUrl: reset.resetUrl } : {}),
+    expiresAt: reset.expiresAt,
+  });
 });
 
 export default router;

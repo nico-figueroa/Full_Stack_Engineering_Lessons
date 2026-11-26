@@ -46,6 +46,41 @@ describe("authentication controllers", () => {
     }
   });
 
+  it("requires an emailed one-time code when MFA is enabled", async () => {
+    const passwordHash = await bcrypt.hash("secret-password", 4);
+    const originalInfo = console.info;
+    console.info = () => {};
+    pool.query = async query => {
+      if (query.includes("FROM users WHERE email")) {
+        return {
+          rows: [{
+            id: 9,
+            email: "person@example.com",
+            password_hash: passwordHash,
+            role: "user",
+            email_mfa_enabled: true,
+          }],
+        };
+      }
+      if (query.includes("INSERT INTO email_mfa_challenges")) {
+        return { rows: [{ expires_at: "2030-01-01T00:00:00Z" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    };
+    try {
+      const response = createResponse();
+      await login({ body: { email: "person@example.com", password: "secret-password" } }, response);
+      expect(response.payload).to.include({
+        mfaRequired: true,
+        maskedEmail: "pe****@example.com",
+      });
+      expect(response.payload.challengeId).to.match(/^[0-9a-f-]{36}$/);
+      expect(response.payload).not.to.have.property("accessToken");
+    } finally {
+      console.info = originalInfo;
+    }
+  });
+
   it("rotates only an active refresh session", async () => {
     const originalRefresh = jwt.sign(
       { id: 7, email: "user@example.com", role: "user", tokenType: "refresh" },
@@ -113,7 +148,7 @@ describe("authentication controllers", () => {
       expect(calls.some(call => call.query.startsWith("UPDATE password_reset_tokens SET used_at"))).to.equal(true);
     });
 
-    it("hides the reset link in production unless explicitly enabled", async () => {
+    it("fails closed in production when SMTP is not configured, unless link exposure is enabled", async () => {
       process.env.NODE_ENV = "production";
       pool.query = async query => {
         if (query.startsWith("SELECT id FROM users")) return { rows: [{ id: 7 }] };
@@ -121,6 +156,7 @@ describe("authentication controllers", () => {
       };
       const hidden = createResponse();
       await forgotPassword({ body: { email: "user@example.com" } }, hidden);
+      expect(hidden.statusCode).to.equal(503);
       expect(hidden.payload).not.to.have.property("resetUrl");
 
       process.env.PASSWORD_RESET_EXPOSE_LINK = "true";

@@ -153,7 +153,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthResult"
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/AuthResult" },
+                    { "$ref": "#/components/schemas/MfaLoginRequired" }
+                  ]
                 }
               }
             }
@@ -223,7 +226,7 @@
           "Authentication"
         ],
         "summary": "Request a password reset link",
-        "description": "Always responds 200 with a generic message to avoid revealing which emails are registered. A single-use link valid for 60 minutes is logged to the server console.",
+        "description": "Responds with a generic message to avoid revealing which emails are registered. For an existing account, a single-use link valid for 60 minutes is sent through configured SMTP.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -310,6 +313,96 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           }
+        }
+      }
+    },
+    "/api/auth/mfa/verify": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Complete an email-code sign in",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["challengeId", "code"],
+                "properties": {
+                  "challengeId": { "type": "string", "format": "uuid" },
+                  "code": { "type": "string", "pattern": "^\\\\d{6}$" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Account and token pair", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResult" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/auth/mfa/enroll": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Send an email-code enrollment challenge",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Challenge issued", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MfaChallenge" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/mfa/enroll/verify": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Verify an email-code enrollment challenge",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["challengeId", "code"],
+                "properties": {
+                  "challengeId": { "type": "string", "format": "uuid" },
+                  "code": { "type": "string", "pattern": "^\\\\d{6}$" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Email codes enabled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Message" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/mfa/disable": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Disable email-code MFA after password confirmation",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["password"],
+                "properties": {
+                  "password": { "type": "string", "minLength": 8, "maxLength": 128 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Email codes disabled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Message" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
@@ -1145,7 +1238,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Issue a password reset link for a user (admin only)",
+        "summary": "Email a password reset link to a user (admin only)",
         "security": [
           {
             "bearerAuth": []
@@ -1164,14 +1257,13 @@
         ],
         "responses": {
           "201": {
-            "description": "Reset link issued",
+            "description": "Reset email issued",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
                     "email",
-                    "resetUrl",
                     "expiresAt"
                   ],
                   "properties": {
@@ -1181,7 +1273,8 @@
                     },
                     "resetUrl": {
                       "type": "string",
-                      "format": "uri"
+                      "format": "uri",
+                      "description": "Only returned when PASSWORD_RESET_EXPOSE_LINK is enabled."
                     },
                     "expiresAt": {
                       "type": "string",
@@ -1472,6 +1565,9 @@
               "admin"
             ]
           },
+          "email_mfa_enabled": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -1497,6 +1593,27 @@
             "type": "string"
           }
         }
+      },
+      "MfaChallenge": {
+        "type": "object",
+        "required": ["challengeId", "maskedEmail"],
+        "properties": {
+          "challengeId": { "type": "string", "format": "uuid" },
+          "maskedEmail": { "type": "string" },
+          "expiresAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "MfaLoginRequired": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MfaChallenge" },
+          {
+            "type": "object",
+            "required": ["mfaRequired"],
+            "properties": {
+              "mfaRequired": { "type": "boolean", "const": true }
+            }
+          }
+        ]
       },
       "ItemInput": {
         "type": "object",

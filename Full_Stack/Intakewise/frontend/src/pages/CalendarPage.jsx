@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { addDays, endOfMonth, endOfWeek, format, getDay, parse, startOfMonth, startOfWeek } from "date-fns";
-import { enUS } from "date-fns/locale";
+import { enUS, es } from "date-fns/locale";
 import api from "../api/client";
 import Button from "../components/ui/Button.jsx";
 import Card from "../components/ui/Card.jsx";
 import Input from "../components/ui/Input.jsx";
 import Modal from "../components/ui/Modal.jsx";
 import { useToast } from "../context/useToast.js";
+import useLanguage from "../context/useLanguage.js";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
 const localizer = dateFnsLocalizer({
@@ -16,7 +17,7 @@ const localizer = dateFnsLocalizer({
   parse,
   startOfWeek: date => startOfWeek(date, { weekStartsOn: 0 }),
   getDay,
-  locales: { "en-US": enUS },
+  locales: { "en-US": enUS, "es-CR": es },
 });
 const viewNames = ["month", "week", "day", "agenda"];
 const asDate = (day, time) => {
@@ -41,6 +42,7 @@ export default function CalendarPage() {
   const [form, setForm] = useState(() => ({ item_id: "", date: format(new Date(), "yyyy-MM-dd"), time: "08:00", dosage: "", notes: "" }));
   const [busy, setBusy] = useState(false);
   const { showToast } = useToast();
+  const { language, t } = useLanguage();
   const [from, to] = useMemo(() => dateRange(date, view), [date, view]);
 
   const fetchCalendarData = useCallback(async () => {
@@ -68,9 +70,9 @@ export default function CalendarPage() {
       setItems(data.items);
       setEvents(data.events);
     } catch (error) {
-      showToast("error", error.response?.data?.error || "Could not load the calendar.");
+      showToast("error", error.response?.data?.error || t("calendar.loadError"));
     }
-  }, [fetchCalendarData, showToast]);
+  }, [fetchCalendarData, showToast, t]);
 
   useEffect(() => {
     let active = true;
@@ -90,10 +92,10 @@ export default function CalendarPage() {
         }
       })
       .catch(error => {
-        if (active) showToast("error", error.response?.data?.error || "Could not load the calendar.");
+        if (active) showToast("error", error.response?.data?.error || t("calendar.loadError"));
       });
     return () => { active = false; };
-  }, [fetchCalendarData, showToast]);
+  }, [fetchCalendarData, showToast, t]);
 
   useEffect(() => {
     if (searchParams.has("new")) setSearchParams({}, { replace: true });
@@ -127,7 +129,7 @@ export default function CalendarPage() {
   async function saveEvent(event) {
     event.preventDefault();
     if (!form.item_id || !form.date || !form.time) {
-      showToast("error", "Choose an item, date, and time.");
+      showToast("error", t("calendar.required"));
       return;
     }
     setBusy(true);
@@ -141,9 +143,9 @@ export default function CalendarPage() {
       }
       setSelected(null);
       await load();
-      showToast("success", "Calendar change saved.");
+      showToast("success", t("calendar.saved"));
     } catch (error) {
-      showToast("error", error.response?.data?.error || "Could not save this calendar change.");
+      showToast("error", error.response?.data?.error || t("calendar.saveError"));
     } finally {
       setBusy(false);
     }
@@ -165,9 +167,9 @@ export default function CalendarPage() {
       setSelected(null);
       setDeleteConfirm(false);
       await load();
-      showToast("success", entry.override_id ? "Override removed." : "Scheduled intake skipped.");
+      showToast("success", entry.override_id ? t("calendar.removed") : t("calendar.skipped"));
     } catch (error) {
-      showToast("error", error.response?.data?.error || "Could not remove this calendar event.");
+      showToast("error", error.response?.data?.error || t("calendar.removeError"));
     } finally {
       setBusy(false);
     }
@@ -182,11 +184,11 @@ export default function CalendarPage() {
   return (
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div><p className="text-sm font-semibold uppercase tracking-widest text-violet-700 dark:text-violet-300">PLAN AHEAD</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Your calendar</h1><p className="mt-2 text-sm text-slate-500">Select a date range to add an intake or click a proposal to adjust it.</p></div>
-        <Button onClick={() => openNew()}>＋ Add intake</Button>
+        <div><p className="text-sm font-semibold uppercase tracking-widest text-violet-700 dark:text-violet-300">{t("calendar.eyebrow")}</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">{t("calendar.title")}</h1><p className="mt-2 text-sm text-slate-500">{t("calendar.subtitle")}</p></div>
+        <Button onClick={() => openNew()}>{t("calendar.addIntake")}</Button>
       </div>
       <Card className="calendar-card p-3 sm:p-5">
-        {items.length === 0 && <p className="px-3 pb-3 text-sm text-slate-500">Add an item before creating calendar intakes.</p>}
+        {items.length === 0 && <p className="px-3 pb-3 text-sm text-slate-500">{t("calendar.addItemFirst")}</p>}
         <div className="h-[68vh] min-h-[540px]">
           <Calendar
             localizer={localizer}
@@ -202,35 +204,46 @@ export default function CalendarPage() {
             onSelectSlot={({ start }) => openNew(start)}
             selectable
             popup
+            culture={language === "es" ? "es-CR" : "en-US"}
             eventPropGetter={eventStyleGetter}
-            messages={{ noEventsInRange: "No scheduled intakes in this range.", showMore: total => `+${total} more` }}
+            messages={{
+              noEventsInRange: t("calendar.noEvents"),
+              showMore: total => t("calendar.more", { total }),
+              today: t("calendar.today"),
+              previous: t("calendar.previous"),
+              next: t("calendar.next"),
+              month: t("calendar.month"),
+              week: t("calendar.week"),
+              day: t("calendar.day"),
+              agenda: t("calendar.agenda"),
+            }}
           />
         </div>
       </Card>
-      <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500"><span><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-violet-500" />Proposed</span><span><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-sky-500" />Adjusted</span><span><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />Has saved warning</span></div>
-      <p className="mt-4 text-xs leading-5 text-slate-500">This schedule is a proposal based on your entries. You can freely adjust it. Consult your healthcare provider for official recommendations. Warnings do not establish that an intake combination is unsafe or safe.</p>
-      <Modal open={Boolean(selected) && !deleteConfirm} title={selected?.mode === "new" ? "Add calendar intake" : "Calendar event"} onClose={() => setSelected(null)}>
-        {selected?.mode === "existing" && <div className="mb-5 rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800"><p className="font-semibold">{selected.event.resource.name}</p><p className="mt-1 text-slate-500">{selected.event.resource.date} · {selected.event.resource.time} · {selected.event.resource.source === "override" ? "User override" : "Schedule proposal"}</p>{selected.event.resource.notes && <p className="mt-2 text-slate-600">{selected.event.resource.notes}</p>}</div>}
+      <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500"><span><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-violet-500" />{t("calendar.proposed")}</span><span><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-sky-500" />{t("calendar.adjusted")}</span><span><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />{t("calendar.warning")}</span></div>
+      <p className="mt-4 text-xs leading-5 text-slate-500">{t("calendar.disclaimer")}</p>
+      <Modal open={Boolean(selected) && !deleteConfirm} title={selected?.mode === "new" ? t("calendar.addIntake") : t("calendar.event")} onClose={() => setSelected(null)}>
+        {selected?.mode === "existing" && <div className="mb-5 rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800"><p className="font-semibold">{selected.event.resource.name}</p><p className="mt-1 text-slate-500">{selected.event.resource.date} · {selected.event.resource.time} · {selected.event.resource.source === "override" ? t("calendar.override") : t("calendar.proposal")}</p>{selected.event.resource.notes && <p className="mt-2 text-slate-600">{selected.event.resource.notes}</p>}</div>}
         <form onSubmit={saveEvent}>
-          <label className="mb-4 block text-sm font-medium text-slate-700 dark:text-slate-300">Item
+          <label className="mb-4 block text-sm font-medium text-slate-700 dark:text-slate-300">{t("calendar.item")}
             <select required value={form.item_id} onChange={event => setForm({ ...form, item_id: event.target.value, dosage: items.find(item => String(item.id) === event.target.value)?.dosage_per_intake || "" })} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950">
-              <option value="">Select an item</option>{items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              <option value="">{t("calendar.selectItem")}</option>{items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
-          <div className="grid gap-1 sm:grid-cols-2"><Input label="Date" type="date" required value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} /><Input label="Time" type="time" required value={form.time} onChange={event => setForm({ ...form, time: event.target.value })} /></div>
-          <Input label="Dosage" value={form.dosage} onChange={event => setForm({ ...form, dosage: event.target.value })} />
-          <label className="mb-5 block text-sm font-medium text-slate-700 dark:text-slate-300">Notes
+          <div className="grid gap-1 sm:grid-cols-2"><Input label={t("calendar.date")} type="date" required value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} /><Input label={t("calendar.time")} type="time" required value={form.time} onChange={event => setForm({ ...form, time: event.target.value })} /></div>
+          <Input label={t("items.dosage")} value={form.dosage} onChange={event => setForm({ ...form, dosage: event.target.value })} />
+          <label className="mb-5 block text-sm font-medium text-slate-700 dark:text-slate-300">{t("items.generalNotes")}
             <textarea rows="2" value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950" />
           </label>
           <div className="flex justify-between gap-2">
-            {selected?.mode === "existing" ? <Button type="button" variant="danger" onClick={() => setDeleteConfirm(true)} disabled={busy}>Delete / skip</Button> : <span />}
-            <div className="flex gap-2"><Button type="button" variant="secondary" onClick={() => setSelected(null)}>Cancel</Button><Button type="submit" disabled={busy || !items.length}>{busy ? "Saving…" : "Save intake"}</Button></div>
+            {selected?.mode === "existing" ? <Button type="button" variant="danger" onClick={() => setDeleteConfirm(true)} disabled={busy}>{t("calendar.deleteSkip")}</Button> : <span />}
+            <div className="flex gap-2"><Button type="button" variant="secondary" onClick={() => setSelected(null)}>{t("common.cancel")}</Button><Button type="submit" disabled={busy || !items.length}>{busy ? t("items.saving") : t("calendar.saveIntake")}</Button></div>
           </div>
         </form>
       </Modal>
-      <Modal open={deleteConfirm} title={selected?.event?.resource?.override_id ? "Remove this override?" : "Skip this intake?"} onClose={() => setDeleteConfirm(false)}>
-        <p className="mb-6 text-sm leading-6 text-slate-600 dark:text-slate-300">{selected?.event?.resource?.override_id ? "Removing this override restores the original proposal." : "This hides the proposed event for this date only."}</p>
-        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setDeleteConfirm(false)}>Cancel</Button><Button variant="danger" onClick={removeEvent} disabled={busy}>{busy ? "Saving…" : "Confirm"}</Button></div>
+      <Modal open={deleteConfirm} title={selected?.event?.resource?.override_id ? t("calendar.removeTitle") : t("calendar.skipTitle")} onClose={() => setDeleteConfirm(false)}>
+        <p className="mb-6 text-sm leading-6 text-slate-600 dark:text-slate-300">{selected?.event?.resource?.override_id ? t("calendar.removeBody") : t("calendar.skipBody")}</p>
+        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setDeleteConfirm(false)}>{t("common.cancel")}</Button><Button variant="danger" onClick={removeEvent} disabled={busy}>{busy ? t("items.saving") : t("calendar.confirm")}</Button></div>
       </Modal>
     </>
   );

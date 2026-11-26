@@ -34,7 +34,8 @@ E_Commerce_App/
   `npm run dev` open the backend (`/` links to `/api-docs`) in your browser; set `OPEN_BROWSER=false` to
   disable (always disabled when `NODE_ENV=production`).
 - Existing databases: apply `migration_002_profiles_addresses_shipments.sql`
-  (profiles, delivery addresses, shipments).
+  (profiles, delivery addresses, shipments), then
+  `migration_003_enable_rls.sql` (RLS hardening).
 - Optional env: `SHIPPO_API_KEY` (Shippo **test** key; without it shipments are
   simulated) and `SHIP_FROM_*` (sender address).
 - Payments: status is reconciled directly with Stripe, so the webhook is
@@ -98,7 +99,16 @@ instead of falling back to `public`.
 For Render, keep `DATABASE_URL` in the environment and use the Supabase **shared
 session pooler on port 5432**, which supports IPv4. Do not use the transaction
 pooler on port 6543: session settings do not reliably persist between transactions.
-Keep `DB_SSL=true`. No credentials or database objects are changed by this fix.
+Keep `DB_SSL=true`.
+
+All Nomadant application tables use RLS with no client policies. This is
+intentional: authorization remains in the Express backend, and only its
+trusted PostgreSQL role accesses the tables. The migration also revokes schema,
+table, and sequence access from Supabase `anon`, `authenticated`, and
+`service_role`. Do not grant these roles access or add `USING (true)` policies
+for convenience; doing so would bypass the backend authorization boundary.
+If direct Supabase client access is introduced later, design least-privilege
+policies and exposed columns around a verified identity mapping first.
 
 The schema and tables must already exist, including in local/test databases.
 The database role needs schema `USAGE` plus the existing table/sequence privileges.

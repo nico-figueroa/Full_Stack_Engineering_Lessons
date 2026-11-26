@@ -4,6 +4,8 @@ import api, { clearSession, getAccessToken, getRefreshToken, setSession } from "
 import Layout from "./components/Layout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { ToastProvider } from "./context/ToastContext.jsx";
+import { LanguageProvider } from "./context/LanguageContext.jsx";
+import useLanguage from "./context/useLanguage.js";
 import Dashboard from "./pages/Dashboard.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import InteractionDetail from "./pages/InteractionDetail.jsx";
@@ -18,6 +20,11 @@ import ResetPassword from "./pages/ResetPassword.jsx";
 import Settings from "./pages/Settings.jsx";
 
 const CalendarPage = lazy(() => import("./pages/CalendarPage.jsx"));
+
+function CalendarFallback() {
+  const { t } = useLanguage();
+  return <p className="text-sm text-slate-500">{t("calendar.loading")}</p>;
+}
 
 export default function App() {
   const [token, setToken] = useState(getAccessToken);
@@ -51,6 +58,18 @@ export default function App() {
 
   async function login(email, password) {
     const { data } = await api.post("/auth/login", { email, password });
+    if (data.mfaRequired) return data;
+    acceptSession(data);
+    return data;
+  }
+
+  async function verifyMfa(challengeId, code) {
+    const { data } = await api.post("/auth/mfa/verify", { challengeId, code });
+    acceptSession(data);
+    return data;
+  }
+
+  function acceptSession(data) {
     setSession(data);
     setToken(data.accessToken);
     setUser(data.user);
@@ -71,10 +90,14 @@ export default function App() {
     setUser(null);
   }
 
+  function updateSecurityState(emailMfaEnabled) {
+    setUser(current => current ? { ...current, email_mfa_enabled: emailMfaEnabled } : current);
+  }
+
   return (
-    <ToastProvider>
+    <LanguageProvider><ToastProvider>
       <Routes>
-        <Route path="/login" element={token ? <Navigate to="/" replace /> : <Login onLogin={login} />} />
+        <Route path="/login" element={token ? <Navigate to="/" replace /> : <Login onLogin={login} onVerifyMfa={verifyMfa} />} />
         <Route path="/register" element={token ? <Navigate to="/" replace /> : <Register onRegister={register} />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -85,14 +108,14 @@ export default function App() {
             <Route path="items/:itemId" element={<ItemDetail />} />
             <Route path="interactions/:itemId" element={<InteractionDetail />} />
             <Route path="reference/:itemId" element={<ReferencePage />} />
-            <Route path="calendar" element={<Suspense fallback={<p className="text-sm text-slate-500">Loading calendar…</p>}><CalendarPage /></Suspense>} />
+            <Route path="calendar" element={<Suspense fallback={<CalendarFallback />}><CalendarPage /></Suspense>} />
             <Route path="override/:itemId" element={<OverrideEditor />} />
             <Route path="settings" element={<Settings />} />
-            <Route path="profile" element={<Profile user={user} />} />
+            <Route path="profile" element={<Profile user={user} onSecurityChange={updateSecurityState} />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to={token ? "/" : "/login"} replace />} />
       </Routes>
-    </ToastProvider>
+    </ToastProvider></LanguageProvider>
   );
 }

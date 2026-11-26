@@ -2,24 +2,28 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import Button from "./ui/Button.jsx";
 import { useToast } from "../context/useToast.js";
-
-const links = [
-  { to: "/", label: "Overview", end: true },
-  { to: "/items", label: "My items" },
-  { to: "/calendar", label: "Calendar" },
-];
+import LanguageSwitcher from "./LanguageSwitcher.jsx";
+import useLanguage from "../context/useLanguage.js";
 
 export default function Layout({ user, onLogout }) {
   const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [securityPrompt, setSecurityPrompt] = useState(true);
   const location = useLocation();
   const { showToast } = useToast();
+  const { t } = useLanguage();
+
+  const links = [
+    { to: "/", label: t("nav.overview"), end: true },
+    { to: "/items", label: t("nav.items") },
+    { to: "/calendar", label: t("nav.calendar") },
+  ];
 
   async function logout() {
     try {
       await onLogout();
     } catch (error) {
-      showToast("error", error.response?.data?.error || "Could not revoke the server session; this browser session was retained.");
+      showToast("error", error.response?.data?.error || t("nav.logoutError"));
     }
   }
 
@@ -36,7 +40,7 @@ export default function Layout({ user, onLogout }) {
             <img src="/brand-mark.svg" alt="" className="h-9 w-9" />
             <span>Intake<span className="text-violet-600 dark:text-violet-400">wise</span></span>
           </NavLink>
-          <button className="rounded-lg border px-3 py-2 text-sm md:hidden" onClick={() => setMenuOpen(value => !value)} aria-expanded={menuOpen}>Menu</button>
+          <button className="rounded-lg border px-3 py-2 text-sm md:hidden" onClick={() => setMenuOpen(value => !value)} aria-expanded={menuOpen}>{t("nav.menu")}</button>
           <nav className={`${menuOpen ? "absolute inset-x-0 top-full flex flex-col border-b bg-white p-4 dark:bg-slate-950" : "hidden"} gap-1 md:static md:flex md:flex-row md:items-center md:border-0 md:bg-transparent md:p-0`}>
             {links.map(link => (
               <NavLink key={link.to} to={link.to} end={link.end} onClick={() => setMenuOpen(false)}
@@ -44,20 +48,27 @@ export default function Layout({ user, onLogout }) {
                 {link.label}
               </NavLink>
             ))}
-            <NavLink to="/profile" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900">Profile</NavLink>
+            <NavLink to="/profile" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900">{t("nav.profile")}</NavLink>
           </nav>
           <div className="hidden items-center gap-2 md:flex">
-            <button onClick={() => setDark(value => !value)} aria-label="Toggle dark mode" className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">{dark ? "☀" : "◐"}</button>
+            <LanguageSwitcher />
+            <button onClick={() => setDark(value => !value)} aria-label={t("nav.toggleTheme", { theme: t(dark ? "nav.light" : "nav.dark") })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">{dark ? "☀" : "◐"}</button>
             <span className="hidden text-sm text-slate-500 lg:inline">{user?.name || user?.email}</span>
-            <Button variant="secondary" onClick={logout}>Sign out</Button>
+            <Button variant="secondary" onClick={logout}>{t("nav.signOut")}</Button>
           </div>
         </div>
-        {menuOpen && <div className="flex items-center gap-3 border-t px-4 py-3 md:hidden"><button onClick={() => setDark(value => !value)}>Toggle {dark ? "light" : "dark"} mode</button><Button variant="secondary" onClick={logout}>Sign out</Button></div>}
+        {menuOpen && <div className="flex flex-wrap items-center gap-3 border-t px-4 py-3 md:hidden"><LanguageSwitcher /><button onClick={() => setDark(value => !value)}>{t("nav.toggleTheme", { theme: t(dark ? "nav.light" : "nav.dark") })}</button><Button variant="secondary" onClick={logout}>{t("nav.signOut")}</Button></div>}
       </header>
+      {securityPrompt && user && !user.email_mfa_enabled && <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 sm:px-6">
+          <span>{t("profile.enrollmentBanner")}</span>
+          <div className="flex items-center gap-3"><NavLink to="/profile" className="font-semibold underline">{t("profile.reviewSecurity")}</NavLink><button type="button" className="font-medium" onClick={() => setSecurityPrompt(false)} aria-label={t("common.close")}>×</button></div>
+        </div>
+      </div>}
       <main key={location.pathname} className="mx-auto max-w-7xl px-4 py-7 animate-fade-in sm:px-6 lg:py-10">
         <Outlet />
       </main>
-      <footer className="mx-auto max-w-7xl px-4 pb-8 text-xs text-slate-500 sm:px-6">For organization only. This is not medical advice.</footer>
+      <footer className="mx-auto max-w-7xl px-4 pb-8 text-xs text-slate-500 sm:px-6">{t("nav.footer")}</footer>
     </div>
   );
 }

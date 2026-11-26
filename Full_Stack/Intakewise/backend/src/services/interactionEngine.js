@@ -1,4 +1,5 @@
 import { getExternalInteractionsForItem, normalizeWarnings } from "./externalDataService.js";
+import { getBroaderEvidence } from "./broaderEvidenceService.js";
 
 export async function analyzeInteractions(items) {
   const results = await Promise.all(items.map(async item => {
@@ -8,7 +9,10 @@ export async function analyzeInteractions(items) {
       source: "User-entered note",
       sourceUrl: item.reference_data?.source_url || null,
     }));
-    const external = await getExternalInteractionsForItem(item);
+    const [external, evidence] = await Promise.all([
+      getExternalInteractionsForItem(item),
+      getBroaderEvidence(item),
+    ]);
     const externalWarnings = normalizeWarnings(external).map(warning => typeof warning === "string"
       ? { description: warning, severity: "review", source: "DailyMed", sourceUrl: "https://dailymed.nlm.nih.gov/dailymed/" }
       : warning);
@@ -17,6 +21,19 @@ export async function analyzeInteractions(items) {
       name: item.name,
       warnings: [...savedWarnings, ...externalWarnings],
       sources: [...new Set(externalWarnings.map(warning => warning.sourceUrl).filter(Boolean))],
+      evidence: [
+        ...(evidence.normalization?.sourceUrl ? [{
+          source: "RxNorm",
+          title: evidence.normalization.name,
+          url: evidence.normalization.sourceUrl,
+          type: "normalization",
+        }] : []),
+        ...evidence.research.map(reference => ({ ...reference, type: "research" })),
+        ...evidence.patientEducation.map(reference => ({ ...reference, type: "patient_education" })),
+        ...evidence.supplementReferences.map(reference => ({ ...reference, type: "supplement_factsheet" })),
+      ],
+      sourceErrors: evidence.sourceErrors,
+      normalization: evidence.normalization,
     };
   }));
 

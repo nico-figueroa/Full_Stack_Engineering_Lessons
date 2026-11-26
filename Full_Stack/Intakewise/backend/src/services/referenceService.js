@@ -3,6 +3,7 @@ import { fetchSplXml } from "./dailymedSplService.js";
 import { extractProfileSections } from "./dailymedExtractor.js";
 import { matchCacheKey, resolveDailyMedLabel } from "./labelMatcher.js";
 import { persistAutomaticMatchStatus } from "./matchStatusStore.js";
+import { getBroaderEvidence } from "./broaderEvidenceService.js";
 
 const CACHE_HOURS = 24;
 const OPEN_FDA_URL = "https://api.fda.gov/drug/label.json";
@@ -21,6 +22,10 @@ export async function getReferenceForItem(item) {
     foodInteractions: [],
     warnings: [],
     pharmacology: [],
+    research: [],
+    patientEducation: [],
+    supplementReferences: [],
+    normalization: null,
     references: [],
     userProvided: userProvided(item),
     sourceErrors: [],
@@ -29,11 +34,26 @@ export async function getReferenceForItem(item) {
     notice: "Only information returned by the cited sources is shown. Missing sections do not mean there are no risks.",
   };
 
+  const evidencePromise = getBroaderEvidence(item);
   let resolution = null;
   try {
     resolution = await resolveDailyMedLabel(item);
   } catch (error) {
     profile.sourceErrors.push(`DailyMed: ${error.message}`);
+  }
+
+  const evidence = await evidencePromise;
+  if ((!resolution?.selected || resolution.status === "needs_review")
+    && evidence.normalization?.name
+    && evidence.normalization.name !== item.name) {
+    try {
+      const normalizedResolution = await resolveDailyMedLabel(item, { query: evidence.normalization.name });
+      if (normalizedResolution.selected) {
+        resolution = normalizedResolution;
+      }
+    } catch (error) {
+      profile.sourceErrors.push(`DailyMed normalized search: ${error.message}`);
+    }
   }
 
   const selected = resolution?.selected || null;
@@ -79,6 +99,20 @@ export async function getReferenceForItem(item) {
     }
   }
 
+  profile.normalization = evidence.normalization;
+  profile.research = evidence.research;
+  profile.patientEducation = evidence.patientEducation;
+  profile.supplementReferences = evidence.supplementReferences;
+  if (evidence.normalization?.sourceUrl) {
+    profile.references.push({
+      source: "RxNorm",
+      title: `${evidence.normalization.name} (${evidence.normalization.rxcui})`,
+      url: evidence.normalization.sourceUrl,
+    });
+  }
+  profile.references.push(...evidence.research, ...evidence.patientEducation, ...evidence.supplementReferences);
+  profile.sourceErrors.push(...evidence.sourceErrors);
+
   profile.references = dedupeReferences(profile.references);
   if (!profile.sourceErrors.length) await cacheReference(cacheKey, item.name, profile);
   return profile;
@@ -114,7 +148,9 @@ function dedupeReferences(references) {
 
 async function fetchOpenFdaLabel(setid) {
   const query = `openfda.spl_set_id:"${setid}"`;
-  const url = `${OPEN_FDA_URL}?search=${encodeURIComponent(query)}&limit=1`;
+  const params = new URLSearchParams({ search: query, limit: "1" });
+  if (process.env.OPENFDA_API_KEY) params.set("api_key", process.env.OPENFDA_API_KEY);
+  const url = `${OPEN_FDA_URL}?${params}`;
   const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`openFDA label request failed with HTTP ${response.status}`);

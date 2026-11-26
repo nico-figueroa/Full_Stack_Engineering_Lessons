@@ -170,6 +170,18 @@ CREATE TABLE shipments (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- This application is backend-only. RLS with no policies is intentional:
+-- only a trusted PostgreSQL role with BYPASSRLS can access these tables.
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE oauth_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE carts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shipments ENABLE ROW LEVEL SECURITY;
+
 -- ============================
 -- INDEXES
 -- ============================

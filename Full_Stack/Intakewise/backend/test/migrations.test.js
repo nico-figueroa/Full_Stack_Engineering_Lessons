@@ -39,6 +39,7 @@ function createDatabasePool(schemaColumns) {
       }
       if (query.includes("ALTER TABLE users ADD COLUMN IF NOT EXISTS name")) migrationSql.push("005");
       if (query.includes("CREATE TABLE auth_sessions")) migrationSql.push("006");
+      if (query.includes("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_mfa_enabled")) migrationSql.push("008");
       return { rows: [], rowCount: 0 };
     },
     release() {},
@@ -63,8 +64,10 @@ describe("database migration startup", () => {
       "004_create_reference_cache.sql",
       "005_complete_profiles_and_overrides.sql",
       "006_create_auth_sessions.sql",
+      "007_create_password_reset_tokens.sql",
+      "008_create_email_mfa.sql",
     ]);
-    expect(migrationSql).to.deep.equal(["005", "006"]);
+    expect(migrationSql).to.deep.equal(["005", "006", "008"]);
   });
 
   it("does not adopt or run migrations against an incomplete existing schema", async () => {
