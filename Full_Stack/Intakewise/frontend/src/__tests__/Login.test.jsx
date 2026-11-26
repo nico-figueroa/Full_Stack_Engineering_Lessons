@@ -55,9 +55,11 @@ describe("Login", () => {
   it("shows only the active language and toggles the full login page", () => {
     render(<MemoryRouter><LanguageProvider><Login onLogin={jest.fn()} /></LanguageProvider></MemoryRouter>);
     const switcher = screen.getByRole("button", { name: /Language: English/ });
-    expect(switcher).toHaveTextContent("🇺🇸English");
+    expect(switcher).toHaveTextContent("English");
+    expect(screen.getByTestId("language-flag-us")).toBeInTheDocument();
     fireEvent.click(switcher);
-    expect(screen.getByRole("button", { name: /Idioma: Español/ })).toHaveTextContent("🇨🇷Español");
+    expect(screen.getByRole("button", { name: /Idioma: Español/ })).toHaveTextContent("Español");
+    expect(screen.getByTestId("language-flag-cr")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Inicia sesión en tu cuenta" })).toBeInTheDocument();
   });
 });
