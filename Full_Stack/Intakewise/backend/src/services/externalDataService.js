@@ -1,4 +1,5 @@
 import pool from "../config/db.js";
+import { dailyMedWebUrl } from "../config/externalServices.js";
 import { fetchSplXml } from "./dailymedSplService.js";
 import { extractInteractionsFromSplXml } from "./dailymedExtractor.js";
 import { matchCacheKey, resolveDailyMedLabel } from "./labelMatcher.js";
@@ -41,7 +42,7 @@ export async function getExternalInteractionsForItem(item) {
         description: `The official label for ${item.name} could not be matched reliably. Review the label match to load official interaction information.`,
         severity: "review",
         source: "DailyMed",
-        sourceUrl: "https://dailymed.nlm.nih.gov/dailymed/",
+        sourceUrl: `${dailyMedWebUrl()}/`,
       }];
     }
   } catch (error) {
@@ -50,7 +51,7 @@ export async function getExternalInteractionsForItem(item) {
       description: `Official interaction information could not be retrieved: ${error.message}`,
       severity: "unavailable",
       source: "DailyMed",
-      sourceUrl: "https://dailymed.nlm.nih.gov/dailymed/",
+      sourceUrl: `${dailyMedWebUrl()}/`,
     }];
   }
 

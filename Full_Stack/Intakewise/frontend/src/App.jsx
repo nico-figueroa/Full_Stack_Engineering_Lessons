@@ -94,6 +94,10 @@ export default function App() {
     setUser(current => current ? { ...current, email_mfa_enabled: emailMfaEnabled } : current);
   }
 
+  function updateProfileState(updatedUser) {
+    setUser(updatedUser);
+  }
+
   return (
     <LanguageProvider><ToastProvider>
       <Routes>
@@ -111,7 +115,14 @@ export default function App() {
             <Route path="calendar" element={<Suspense fallback={<CalendarFallback />}><CalendarPage /></Suspense>} />
             <Route path="override/:itemId" element={<OverrideEditor />} />
             <Route path="settings" element={<Settings />} />
-            <Route path="profile" element={<Profile user={user} onSecurityChange={updateSecurityState} />} />
+            <Route path="profile" element={(
+              <Profile
+                user={user}
+                onPasswordChange={acceptSession}
+                onProfileChange={updateProfileState}
+                onSecurityChange={updateSecurityState}
+              />
+            )} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to={token ? "/" : "/login"} replace />} />

@@ -3,9 +3,23 @@ import axios from "axios";
 const ACCESS_KEY = "drug-intake-access";
 const REFRESH_KEY = "drug-intake-refresh";
 
+function apiTimeoutMs() {
+  const configured = Number(import.meta.env.VITE_API_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 30_000;
+}
+
+function apiBaseUrl() {
+  const configured = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").trim();
+  const url = new URL(configured, window.location.origin);
+  if (!url.pathname.replace(/\/+$/, "").endsWith("/api")) {
+    throw new Error("VITE_API_URL must end with the backend /api path");
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-  timeout: 30000,
+  baseURL: apiBaseUrl(),
+  timeout: apiTimeoutMs(),
 });
 
 export function setSession({ accessToken, refreshToken }) {

@@ -1,5 +1,6 @@
 import { getExternalInteractionsForItem, normalizeWarnings } from "./externalDataService.js";
 import { getBroaderEvidence } from "./broaderEvidenceService.js";
+import { dailyMedWebUrl } from "../config/externalServices.js";
 
 export async function analyzeInteractions(items) {
   const results = await Promise.all(items.map(async item => {
@@ -14,7 +15,7 @@ export async function analyzeInteractions(items) {
       getBroaderEvidence(item),
     ]);
     const externalWarnings = normalizeWarnings(external).map(warning => typeof warning === "string"
-      ? { description: warning, severity: "review", source: "DailyMed", sourceUrl: "https://dailymed.nlm.nih.gov/dailymed/" }
+      ? { description: warning, severity: "review", source: "DailyMed", sourceUrl: `${dailyMedWebUrl()}/` }
       : warning);
     return {
       item_id: item.id,

@@ -1,4 +1,8 @@
 import pool from "../config/db.js";
+import {
+  externalServiceUrl,
+  publicDataRequestTimeoutMs,
+} from "../config/externalServices.js";
 import { fetchSplXml } from "./dailymedSplService.js";
 import { extractProfileSections } from "./dailymedExtractor.js";
 import { matchCacheKey, resolveDailyMedLabel } from "./labelMatcher.js";
@@ -6,7 +10,6 @@ import { persistAutomaticMatchStatus } from "./matchStatusStore.js";
 import { getBroaderEvidence } from "./broaderEvidenceService.js";
 
 const CACHE_HOURS = 24;
-const OPEN_FDA_URL = "https://api.fda.gov/drug/label.json";
 
 export async function getReferenceForItem(item) {
   const cacheKey = matchCacheKey(item);
@@ -89,7 +92,7 @@ export async function getReferenceForItem(item) {
       profile.references.push({
         source: "openFDA",
         title: [...(sections.brand_name || []), ...(sections.generic_name || [])].slice(0, 2).join(" / ") || `${item.name} drug label`,
-        url: `${OPEN_FDA_URL}?search=${encodeURIComponent(`openfda.spl_set_id:"${selected.setid}"`)}`,
+        url: `${externalServiceUrl("OPENFDA_API_URL")}?search=${encodeURIComponent(`openfda.spl_set_id:"${selected.setid}"`)}`,
       });
       addValues(profile.contraindications, fdaLabel.contraindications);
       addValues(profile.interactions, fdaLabel.drug_interactions);
@@ -150,8 +153,10 @@ async function fetchOpenFdaLabel(setid) {
   const query = `openfda.spl_set_id:"${setid}"`;
   const params = new URLSearchParams({ search: query, limit: "1" });
   if (process.env.OPENFDA_API_KEY) params.set("api_key", process.env.OPENFDA_API_KEY);
-  const url = `${OPEN_FDA_URL}?${params}`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const url = `${externalServiceUrl("OPENFDA_API_URL")}?${params}`;
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(publicDataRequestTimeoutMs()),
+  });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`openFDA label request failed with HTTP ${response.status}`);
   const result = await response.json();

@@ -3,18 +3,29 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import pool from "../src/config/db.js";
 import { createHash } from "node:crypto";
-import { forgotPassword, login, refresh, register, resetPassword } from "../src/controllers/authController.js";
+import {
+  changePassword,
+  forgotPassword,
+  login,
+  refresh,
+  register,
+  resetPassword,
+  updateProfile,
+} from "../src/controllers/authController.js";
 
 describe("authentication controllers", () => {
   let originalQuery;
+  let originalConnect;
   const originalSecret = process.env.JWT_SECRET;
 
   beforeEach(() => {
     originalQuery = pool.query;
+    originalConnect = pool.connect;
     process.env.JWT_SECRET = "test-secret-long-enough-to-satisfy-thirty-two-characters";
   });
   afterEach(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
     if (originalSecret === undefined) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = originalSecret;
   });
@@ -49,6 +60,12 @@ describe("authentication controllers", () => {
   it("requires an emailed one-time code when MFA is enabled", async () => {
     const passwordHash = await bcrypt.hash("secret-password", 4);
     const originalInfo = console.info;
+    const originalEmailEnv = {
+      BREVO_API_KEY: process.env.BREVO_API_KEY,
+      SMTP_HOST: process.env.SMTP_HOST,
+    };
+    delete process.env.BREVO_API_KEY;
+    delete process.env.SMTP_HOST;
     console.info = () => {};
     pool.query = async query => {
       if (query.includes("FROM users WHERE email")) {
@@ -78,6 +95,10 @@ describe("authentication controllers", () => {
       expect(response.payload).not.to.have.property("accessToken");
     } finally {
       console.info = originalInfo;
+      for (const [key, value] of Object.entries(originalEmailEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   });
 
@@ -97,6 +118,104 @@ describe("authentication controllers", () => {
     expect(response.payload.refreshToken).not.to.equal(originalRefresh);
     expect(jwt.verify(response.payload.refreshToken, process.env.JWT_SECRET).tokenType).to.equal("refresh");
   });
+
+  it("updates the authenticated user's name and normalized email", async () => {
+    let values;
+    pool.query = async (query, parameters) => {
+      values = parameters;
+      return {
+        rows: [{
+          id: 7,
+          email: "new@example.com",
+          timezone: "UTC",
+          name: "Updated User",
+          role: "user",
+          email_mfa_enabled: false,
+        }],
+      };
+    };
+
+    const response = createResponse();
+    await updateProfile(
+      { user: { id: 7 }, body: { name: "  Updated User  ", email: "New@Example.com" } },
+      response,
+    );
+
+    expect(values).to.deep.equal(["Updated User", "new@example.com", 7]);
+    expect(response.payload.user.email).to.equal("new@example.com");
+  });
+
+  it("changes the password, revokes prior sessions, and issues a replacement session", async () => {
+    const currentHash = await bcrypt.hash("current-password", 4);
+    const calls = [];
+    let released = false;
+    const client = {
+      async query(query, values) {
+        calls.push({ query, values });
+        if (query.includes("SELECT id, email")) return { rows: [{
+          id: 7,
+          email: "user@example.com",
+          name: "User",
+          role: "user",
+          email_mfa_enabled: false,
+          password_hash: currentHash,
+        }] };
+        if (query.includes("UPDATE users SET password_hash")) return { rows: [{
+          id: 7,
+          email: "user@example.com",
+          name: "User",
+          role: "user",
+          email_mfa_enabled: false,
+        }] };
+        return { rows: [], rowCount: 1 };
+      },
+      release() { released = true; },
+    };
+    pool.connect = async () => client;
+
+    const response = createResponse();
+    await changePassword(
+      { user: { id: 7 }, body: { currentPassword: "current-password", newPassword: "new-password" } },
+      response,
+    );
+
+    const passwordUpdate = calls.find(call => call.query.includes("UPDATE users SET password_hash"));
+    expect(await bcrypt.compare("new-password", passwordUpdate.values[0])).to.equal(true);
+    expect(calls.some(call => call.query.includes("UPDATE auth_sessions SET revoked_at"))).to.equal(true);
+    expect(calls.some(call => call.query.includes("INSERT INTO auth_sessions"))).to.equal(true);
+    expect(calls.some(call => call.query === "COMMIT")).to.equal(true);
+    expect(response.payload).to.have.property("accessToken");
+    expect(response.payload).to.have.property("refreshToken");
+    expect(released).to.equal(true);
+  });
+
+  it("does not change the password when the current password is incorrect", async () => {
+    const currentHash = await bcrypt.hash("current-password", 4);
+    const queries = [];
+    const client = {
+      async query(query) {
+        queries.push(query);
+        if (query.includes("SELECT id, email")) return { rows: [{
+          id: 7,
+          password_hash: currentHash,
+        }] };
+        return { rows: [], rowCount: 1 };
+      },
+      release() {},
+    };
+    pool.connect = async () => client;
+
+    const response = createResponse();
+    await changePassword(
+      { user: { id: 7 }, body: { currentPassword: "incorrect-password", newPassword: "new-password" } },
+      response,
+    );
+
+    expect(response.statusCode).to.equal(400);
+    expect(queries).to.include("ROLLBACK");
+    expect(queries.some(query => query.includes("UPDATE users SET password_hash"))).to.equal(false);
+  });
+
   describe("password reset", () => {
     const originalEnv = { ...process.env };
     let originalInfo;
@@ -106,11 +225,20 @@ describe("authentication controllers", () => {
       process.env.CLIENT_ORIGIN = "http://app.test,http://other.test";
       delete process.env.PASSWORD_RESET_URL_BASE;
       delete process.env.PASSWORD_RESET_EXPOSE_LINK;
+      delete process.env.BREVO_API_KEY;
+      delete process.env.SMTP_HOST;
       process.env.NODE_ENV = "test";
     });
     afterEach(() => {
       console.info = originalInfo;
-      for (const key of ["CLIENT_ORIGIN", "PASSWORD_RESET_URL_BASE", "PASSWORD_RESET_EXPOSE_LINK", "NODE_ENV"]) {
+      for (const key of [
+        "BREVO_API_KEY",
+        "CLIENT_ORIGIN",
+        "PASSWORD_RESET_URL_BASE",
+        "PASSWORD_RESET_EXPOSE_LINK",
+        "SMTP_HOST",
+        "NODE_ENV",
+      ]) {
         if (originalEnv[key] === undefined) delete process.env[key];
         else process.env[key] = originalEnv[key];
       }

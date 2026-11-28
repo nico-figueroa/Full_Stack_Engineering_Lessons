@@ -1,12 +1,13 @@
 import fetch from "node-fetch";
-
-const DAILYMED_SEARCH_URL =
-  "https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json";
+import {
+  externalServiceUrl,
+  publicDataRequestTimeoutMs,
+} from "../config/externalServices.js";
 
 export async function fetchFromDailyMed(normalizedName) {
-  const url = `${DAILYMED_SEARCH_URL}?drug_name=${encodeURIComponent(normalizedName)}`;
+  const url = `${externalServiceUrl("DAILYMED_API_BASE_URL", "drugnames.json")}?drug_name=${encodeURIComponent(normalizedName)}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(publicDataRequestTimeoutMs()) });
   if (!res.ok) return null;
 
   const data = await res.json();

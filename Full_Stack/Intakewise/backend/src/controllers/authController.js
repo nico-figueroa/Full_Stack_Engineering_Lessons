@@ -11,14 +11,14 @@ const credentialsSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
-async function createTokens(user) {
+async function createTokens(user, database = pool) {
   const secret = process.env.JWT_SECRET;
   if (!secret || secret.length < 32) {
     throw new Error("JWT_SECRET must contain at least 32 characters");
   }
 
   const sessionId = randomUUID();
-  await pool.query(
+  await database.query(
     "INSERT INTO auth_sessions (id, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '7 days')",
     [sessionId, user.id]
   );
@@ -212,6 +212,76 @@ export async function me(req, res) {
 
   if (!result.rows[0]) return res.status(404).json({ error: "Account not found" });
   res.json({ user: result.rows[0] });
+}
+
+export async function updateProfile(req, res) {
+  const input = z.object({
+    name: z.string().trim().max(100).transform(value => value || null),
+    email: credentialsSchema.shape.email,
+  }).parse(req.body);
+  const result = await pool.query(
+    `UPDATE users SET name = $1, email = $2, updated_at = NOW()
+     WHERE id = $3
+     RETURNING id, email, timezone, name, role, email_mfa_enabled`,
+    [input.name, input.email, req.user.id],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Account not found" });
+  res.json({ user: result.rows[0] });
+}
+
+export async function changePassword(req, res) {
+  const input = z.object({
+    currentPassword: credentialsSchema.shape.password,
+    newPassword: credentialsSchema.shape.password,
+  }).parse(req.body);
+  const client = await pool.connect();
+  let transactionOpen = false;
+
+  try {
+    await client.query("BEGIN");
+    transactionOpen = true;
+    const existing = await client.query(
+      `SELECT id, email, timezone, name, role, email_mfa_enabled, password_hash
+       FROM users WHERE id = $1`,
+      [req.user.id],
+    );
+    const user = existing.rows[0];
+    if (!user) {
+      await client.query("ROLLBACK");
+      transactionOpen = false;
+      return res.status(404).json({ error: "Account not found" });
+    }
+    if (!user.password_hash || !await bcrypt.compare(input.currentPassword, user.password_hash)) {
+      await client.query("ROLLBACK");
+      transactionOpen = false;
+      return res.status(400).json({ error: "The current password is incorrect." });
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+    const updated = await client.query(
+      `UPDATE users SET password_hash = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, email, timezone, name, role, email_mfa_enabled`,
+      [passwordHash, req.user.id],
+    );
+    await client.query(
+      "UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+      [req.user.id],
+    );
+    const tokens = await createTokens(updated.rows[0], client);
+    await client.query("COMMIT");
+    transactionOpen = false;
+    res.json({
+      message: "Password updated. Other sessions have been signed out.",
+      user: updated.rows[0],
+      ...tokens,
+    });
+  } catch (error) {
+    if (transactionOpen) await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function verifyLoginMfa(req, res) {

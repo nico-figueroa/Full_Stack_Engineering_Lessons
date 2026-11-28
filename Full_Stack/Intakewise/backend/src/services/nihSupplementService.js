@@ -1,12 +1,13 @@
 import fetch from "node-fetch";
-
-const NIH_URL =
-  "https://ods.od.nih.gov/api/supplement.json";
+import {
+  externalServiceUrl,
+  publicDataRequestTimeoutMs,
+} from "../config/externalServices.js";
 
 export async function fetchNihSupplementData(normalizedName) {
-  const url = `${NIH_URL}?ingredient=${encodeURIComponent(normalizedName)}`;
+  const url = `${externalServiceUrl("NIH_ODS_SUPPLEMENT_API_URL")}?ingredient=${encodeURIComponent(normalizedName)}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(publicDataRequestTimeoutMs()) });
   if (!res.ok) return null;
 
   const data = await res.json();

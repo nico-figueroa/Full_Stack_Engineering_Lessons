@@ -1,6 +1,7 @@
 import express from "express";
 import {
   beginMfaEnrollment,
+  changePassword,
   completeMfaEnrollment,
   disableMfa,
   forgotPassword,
@@ -10,6 +11,7 @@ import {
   refresh,
   register,
   resetPassword,
+  updateProfile,
   verifyLoginMfa,
 } from "../controllers/authController.js";
 import auth from "../middleware/auth.js";
@@ -27,5 +29,7 @@ router.post("/mfa/enroll", auth, beginMfaEnrollment);
 router.post("/mfa/enroll/verify", auth, completeMfaEnrollment);
 router.post("/mfa/disable", auth, disableMfa);
 router.get("/me", auth, me);
+router.put("/profile", auth, updateProfile);
+router.put("/password", auth, changePassword);
 
 export default router;

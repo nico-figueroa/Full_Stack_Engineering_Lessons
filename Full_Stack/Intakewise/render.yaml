@@ -36,7 +36,12 @@ services:
         value: https://intakewise.onrender.com
       - key: PASSWORD_RESET_EXPOSE_LINK
         value: "false"
-      # A free SMTP provider (for example Brevo) can supply these values.
+      # Brevo's HTTPS API works on Render's free plan; SMTP ports are blocked there.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_API_URL
+        value: https://api.brevo.com/v3/smtp/email
+      # Optional local/paid-host SMTP fallback.
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -49,10 +54,36 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      - key: EMAIL_DELIVERY_TIMEOUT_MS
+        value: "15000"
       - key: PUBLIC_DATA_CONTACT_EMAIL
         sync: false
       - key: OPENFDA_API_KEY
         sync: false
+      - key: DAILYMED_API_BASE_URL
+        value: https://dailymed.nlm.nih.gov/dailymed/services/v2
+      - key: DAILYMED_WEB_BASE_URL
+        value: https://dailymed.nlm.nih.gov/dailymed
+      - key: RXNORM_API_BASE_URL
+        value: https://rxnav.nlm.nih.gov/REST
+      - key: OPENFDA_API_URL
+        value: https://api.fda.gov/drug/label.json
+      - key: FDA_SRS_API_URL
+        value: https://precision.fda.gov/srs/api/v1/substances
+      - key: NCBI_EUTILS_BASE_URL
+        value: https://eutils.ncbi.nlm.nih.gov/entrez/eutils
+      - key: PUBMED_WEB_BASE_URL
+        value: https://pubmed.ncbi.nlm.nih.gov
+      - key: MEDLINEPLUS_CONNECT_URL
+        value: https://connect.medlineplus.gov/service
+      - key: NIH_ODS_DSLD_API_BASE_URL
+        value: https://api.ods.od.nih.gov/dsld/v9
+      - key: NIH_ODS_SUPPLEMENT_API_URL
+        value: https://ods.od.nih.gov/api/supplement.json
+      - key: PUBLIC_DATA_REQUEST_TIMEOUT_MS
+        value: "8000"
+      - key: PUBLIC_DATA_TOOL_NAME
+        value: intakewise
 
   - type: web
     name: intakewise
@@ -63,3 +94,5 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://intakewise-api.onrender.com/api
+      - key: VITE_API_TIMEOUT_MS
+        value: "30000"

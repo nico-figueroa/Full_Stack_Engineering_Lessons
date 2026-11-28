@@ -1,4 +1,5 @@
 import { fetchSplList, fetchSplListByNdc } from "./dailymedSplService.js";
+import { dailyMedWebUrl } from "../config/externalServices.js";
 
 export const MATCH_STATUSES = ["auto", "confirmed", "needs_review", "no_label"];
 const CACHE_VERSION = "v3";
@@ -228,7 +229,7 @@ export function matchCacheKey(item) {
 }
 
 export function labelUrl(setid) {
-  return `https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=${encodeURIComponent(setid)}`;
+  return `${dailyMedWebUrl("drugInfo.cfm")}?setid=${encodeURIComponent(setid)}`;
 }
 
 export function publicCandidate(candidate) {

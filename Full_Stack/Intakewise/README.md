@@ -119,15 +119,35 @@ DB_POOL_MAX=10
 JWT_SECRET=replace-with-a-random-secret-at-least-32-characters
 CLIENT_ORIGIN=http://localhost:5173
 # Password-reset and email-code delivery (required in production)
+# Preferred on Render Free: Brevo's HTTPS transactional email API.
+BREVO_API_KEY=your-brevo-transactional-api-key
+BREVO_API_URL=https://api.brevo.com/v3/smtp/email
+# Optional SMTP fallback for local development or hosts that permit SMTP ports.
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your-smtp-user
 SMTP_PASS=your-smtp-key
 SMTP_FROM=Intakewise <security@example.com>
+EMAIL_DELIVERY_TIMEOUT_MS=15000
+# Public reference providers. Defaults are shown and can be overridden without a code release.
+DAILYMED_API_BASE_URL=https://dailymed.nlm.nih.gov/dailymed/services/v2
+DAILYMED_WEB_BASE_URL=https://dailymed.nlm.nih.gov/dailymed
+RXNORM_API_BASE_URL=https://rxnav.nlm.nih.gov/REST
+OPENFDA_API_URL=https://api.fda.gov/drug/label.json
+FDA_SRS_API_URL=https://precision.fda.gov/srs/api/v1/substances
+NCBI_EUTILS_BASE_URL=https://eutils.ncbi.nlm.nih.gov/entrez/eutils
+PUBMED_WEB_BASE_URL=https://pubmed.ncbi.nlm.nih.gov
+MEDLINEPLUS_CONNECT_URL=https://connect.medlineplus.gov/service
+NIH_ODS_DSLD_API_BASE_URL=https://api.ods.od.nih.gov/dsld/v9
+NIH_ODS_SUPPLEMENT_API_URL=https://ods.od.nih.gov/api/supplement.json
+PUBLIC_DATA_REQUEST_TIMEOUT_MS=8000
+PUBLIC_DATA_TOOL_NAME=intakewise
 PUBLIC_DATA_CONTACT_EMAIL=developer@example.com
 OPENFDA_API_KEY=optional-free-openfda-key
 ```
+
+All external service URL settings are validated as absolute HTTP(S) URLs when used. The frontend's request timeout is configured at build time with `VITE_API_TIMEOUT_MS` and defaults to 30000 milliseconds.
 
 `DATABASE_SSL=true` enables TLS with certificate verification. If a provider requires a custom root CA, set `DATABASE_SSL_CA_FILE` to the path of its `.crt` file, or set `DATABASE_SSL_CA` to the PEM text (literal `\n` sequences are converted to newlines). The backend fails at startup if `DATABASE_SSL_CA_FILE` points to a file that can't be read. Use TLS for managed database connections.
 
@@ -161,20 +181,25 @@ After redeploying, sign in and check `/api/auth/me`, `/api/items`,
 
 ```dotenv
 VITE_API_URL=http://localhost:5000/api
+VITE_API_TIMEOUT_MS=30000
 ```
 
-Vite variables are public and must never contain credentials. The application does not require API keys for DailyMed or openFDA.
+Vite variables are public and must never contain credentials. `VITE_API_URL` must include the backend `/api` mount path; changing a Vite environment file requires restarting the development server. DailyMed does not require an API key. OpenFDA supports limited anonymous requests but uses `OPENFDA_API_KEY` on the backend for production volume.
 
-### Password reset and email MFA
+### Profile security, password reset, and email MFA
 
-1. On the sign-in page choose **Forgot password?**, enter the account email, and submit.
-2. The API stores only a SHA-256 hash of a random token that expires after 60 minutes and can be used once.
-3. The API sends the link through the provider-neutral SMTP configuration above. Free transactional tiers are sufficient for a small deployment; verify the sending domain for reliable delivery. Outside production, the link can be shown as a **Development reset link** when `PASSWORD_RESET_EXPOSE_LINK=true`. Production without SMTP fails closed with a 503 instead of pretending an email was sent.
-4. Open the link (`/reset-password?token=...`), enter a new password (minimum 8 characters) twice, and submit. All existing refresh sessions for that user are revoked, so the user signs in again.
-5. Admins can issue a reset for any account with `POST /api/admin/users/{id}/password-reset`. The reset link is emailed; it is included in the response only when link exposure is explicitly enabled.
-6. Email security codes are opt-in. Users are prompted after sign-in to visit **Profile → Email security codes**. Enabling them sends a six-digit enrollment code; later sign-ins require a code from the registered email. Codes are hashed with the JWT secret, expire after 10 minutes, permit at most five attempts, and are consumed once. Disabling them requires the current password.
+1. From **Profile**, an authenticated user can edit their name and login email. Email changes take effect immediately.
+2. The **Security** card contains password changes and email-code MFA setup. A password change requires the current password, keeps the browser signed in with replacement tokens, and revokes all prior refresh sessions so other devices are signed out.
+3. On the sign-in page choose **Forgot password?**, enter the account email, and submit.
+4. The API stores only a SHA-256 hash of a random reset token that expires after 60 minutes and can be used once.
+5. The API sends reset links and MFA codes through Brevo's HTTPS API when `BREVO_API_KEY` is set. Otherwise it uses the SMTP configuration. Free transactional tiers are sufficient for a small deployment; verify the sending domain for reliable delivery. Outside production, an unconfigured email provider logs a preview locally. Production without a configured provider fails closed with a 503 instead of pretending an email was sent.
+6. Open a reset link (`/reset-password?token=...`), enter a new password (minimum 8 characters) twice, and submit. All existing refresh sessions for that user are revoked, so the user signs in again.
+7. Admins can issue a reset for any account with `POST /api/admin/users/{id}/password-reset`. The reset link is emailed; it is included in the response only when link exposure is explicitly enabled.
+8. Email security codes are opt-in. Users are prompted after sign-in to visit **Profile → Security**. Enabling them sends a six-digit enrollment code; later sign-ins require a code from the registered email. Codes are hashed with the JWT secret, expire after 10 minutes, permit at most five attempts, and are consumed once. Disabling them requires the current password.
 
 True SMS MFA is not included because SMS delivery cannot meet the zero-cost requirement. Supabase supports phone MFA, but a production SMS provider/carrier still bills per message. The implemented email-code flow is zero-cost when used within a free transactional-email allowance and works from Render.
+
+Render free web services block outbound connections to SMTP ports 25, 465, and 587. Use `BREVO_API_KEY` plus the existing `SMTP_FROM` sender for production delivery on Render Free. The Brevo sender must be authenticated for the domain/account. `BREVO_API_URL` defaults to Brevo's current transactional endpoint but can be changed without an application release; configured values must be absolute HTTP(S) URLs. SMTP remains an optional fallback for local development or a paid host that permits those ports. `EMAIL_DELIVERY_TIMEOUT_MS` bounds HTTPS, DNS, connection, greeting, and socket waits so the API fails promptly instead of hanging past the frontend's request timeout.
 
 Optional backend variables:
 
@@ -208,6 +233,8 @@ All routes except registration, login, refresh, logout, email-code login verific
 | `POST` | `/api/auth/forgot-password` | Request a password-reset link (generic response) |
 | `POST` | `/api/auth/reset-password` | Set a new password with a valid reset token |
 | `GET` | `/api/auth/me` | Read the authenticated profile |
+| `PUT` | `/api/auth/profile` | Update the authenticated user's name and email |
+| `PUT` | `/api/auth/password` | Change the password, revoke prior sessions, and issue replacement tokens |
 | `GET` | `/api/items` | List the current user’s items |
 | `POST` | `/api/items` | Create a validated item |
 | `GET` | `/api/items/:id` | Read an owned item |

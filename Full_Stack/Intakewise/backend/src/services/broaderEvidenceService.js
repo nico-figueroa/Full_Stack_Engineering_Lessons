@@ -1,7 +1,11 @@
 import fetch from "node-fetch";
+import {
+  externalServiceUrl,
+  publicDataRequestTimeoutMs,
+  publicDataToolName,
+} from "../config/externalServices.js";
 import { normalizeText } from "./labelMatcher.js";
 
-const REQUEST_TIMEOUT_MS = 8000;
 const MAX_REFERENCES_PER_SOURCE = 3;
 const EVIDENCE_CACHE_TTL = 12 * 60 * 60 * 1000;
 const evidenceCache = new Map();
@@ -17,20 +21,20 @@ function cleanTerm(item) {
 }
 
 async function requestJson(url, source, fetcher = fetch) {
-  const response = await fetcher(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  const response = await fetcher(url, { signal: AbortSignal.timeout(publicDataRequestTimeoutMs()) });
   if (!response.ok) throw new Error(`${source} request failed with HTTP ${response.status}`);
   return response.json();
 }
 
 export async function fetchRxNormEvidence(term, fetcher = fetch) {
   const value = encodeURIComponent(term);
-  const url = `https://rxnav.nlm.nih.gov/REST/approximateTerm.json?term=${value}&maxEntries=3&option=1`;
+  const url = `${externalServiceUrl("RXNORM_API_BASE_URL", "approximateTerm.json")}?term=${value}&maxEntries=3&option=1`;
   const data = await requestJson(url, "RxNorm", fetcher);
   const candidates = data?.approximateGroup?.candidate || [];
   const best = [...candidates].sort((a, b) => Number(b.score || 0) - Number(a.score || 0))[0];
   if (!best?.rxcui) return null;
   let normalizedName = best.name || term;
-  const relatedUrl = `https://rxnav.nlm.nih.gov/REST/rxcui/${encodeURIComponent(best.rxcui)}/related.json?tty=IN`;
+  const relatedUrl = `${externalServiceUrl("RXNORM_API_BASE_URL", `rxcui/${encodeURIComponent(best.rxcui)}/related.json`)}?tty=IN`;
   const related = await requestJson(relatedUrl, "RxNorm", fetcher);
   const ingredient = related?.relatedGroup?.conceptGroup
     ?.flatMap(group => group.conceptProperties || [])
@@ -41,7 +45,7 @@ export async function fetchRxNormEvidence(term, fetcher = fetch) {
     name: normalizedName,
     matchedName: best.name || term,
     score: Number(best.score || 0),
-    sourceUrl: `https://rxnav.nlm.nih.gov/REST/rxcui/${encodeURIComponent(best.rxcui)}/allProperties.json?prop=names`,
+    sourceUrl: `${externalServiceUrl("RXNORM_API_BASE_URL", `rxcui/${encodeURIComponent(best.rxcui)}/allProperties.json`)}?prop=names`,
   };
 }
 
@@ -53,10 +57,10 @@ export async function fetchPubMedReferences(term, fetcher = fetch) {
     retmode: "json",
     retmax: String(MAX_REFERENCES_PER_SOURCE),
     sort: "relevance",
-    tool: "intakewise",
+    tool: publicDataToolName(),
   });
   if (process.env.PUBLIC_DATA_CONTACT_EMAIL) params.set("email", process.env.PUBLIC_DATA_CONTACT_EMAIL);
-  const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?${params}`;
+  const searchUrl = `${externalServiceUrl("NCBI_EUTILS_BASE_URL", "esearch.fcgi")}?${params}`;
   const search = await requestJson(searchUrl, "PubMed", fetcher);
   const ids = search?.esearchresult?.idlist || [];
   if (!ids.length) return [];
@@ -65,11 +69,11 @@ export async function fetchPubMedReferences(term, fetcher = fetch) {
     db: "pubmed",
     id: ids.join(","),
     retmode: "json",
-    tool: "intakewise",
+    tool: publicDataToolName(),
   });
   if (process.env.PUBLIC_DATA_CONTACT_EMAIL) summaryParams.set("email", process.env.PUBLIC_DATA_CONTACT_EMAIL);
   const summaries = await requestJson(
-    `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?${summaryParams}`,
+    `${externalServiceUrl("NCBI_EUTILS_BASE_URL", "esummary.fcgi")}?${summaryParams}`,
     "PubMed",
     fetcher,
   );
@@ -79,7 +83,7 @@ export async function fetchPubMedReferences(term, fetcher = fetch) {
       source: "PubMed",
       kind: "research",
       title: result?.title || `PubMed record ${id}`,
-      url: `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(id)}/`,
+      url: externalServiceUrl("PUBMED_WEB_BASE_URL", `${encodeURIComponent(id)}/`),
       published: result?.pubdate || null,
       authors: Array.isArray(result?.authors)
         ? result.authors.slice(0, 3).map(author => author.name).filter(Boolean)
@@ -97,7 +101,11 @@ export async function fetchMedlinePlusReferences(normalization, term, fetcher = 
     "informationRecipient.languageCode.c": "en",
     knowledgeResponseType: "application/json",
   });
-  const data = await requestJson(`https://connect.medlineplus.gov/service?${params}`, "MedlinePlus", fetcher);
+  const data = await requestJson(
+    `${externalServiceUrl("MEDLINEPLUS_CONNECT_URL")}?${params}`,
+    "MedlinePlus",
+    fetcher,
+  );
   return collectLinkedEntries(data)
     .slice(0, MAX_REFERENCES_PER_SOURCE)
     .map(entry => ({ ...entry, source: "MedlinePlus", kind: "patient_education" }));
@@ -106,7 +114,7 @@ export async function fetchMedlinePlusReferences(normalization, term, fetcher = 
 export async function fetchNihSupplementReferences(term, fetcher = fetch) {
   const params = new URLSearchParams({ method: "factsheet", term });
   const data = await requestJson(
-    `https://api.ods.od.nih.gov/dsld/v9/ingredient-groups/?${params}`,
+    `${externalServiceUrl("NIH_ODS_DSLD_API_BASE_URL", "ingredient-groups")}/?${params}`,
     "NIH ODS",
     fetcher,
   );

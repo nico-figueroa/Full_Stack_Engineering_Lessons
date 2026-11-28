@@ -1,12 +1,13 @@
 import fetch from "node-fetch";
-
-const SRS_URL =
-  "https://precision.fda.gov/srs/api/v1/substances";
+import {
+  externalServiceUrl,
+  publicDataRequestTimeoutMs,
+} from "../config/externalServices.js";
 
 export async function fetchFdaSrsData(normalizedName) {
-  const url = `${SRS_URL}?name=${encodeURIComponent(normalizedName)}`;
+  const url = `${externalServiceUrl("FDA_SRS_API_URL")}?name=${encodeURIComponent(normalizedName)}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(publicDataRequestTimeoutMs()) });
   if (!res.ok) return null;
 
   const data = await res.json();

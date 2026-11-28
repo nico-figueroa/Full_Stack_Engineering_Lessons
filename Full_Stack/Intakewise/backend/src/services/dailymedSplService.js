@@ -1,14 +1,17 @@
 import fetch from "node-fetch";
 import { XMLParser } from "fast-xml-parser";
-
-const SPL_SEARCH_URL =
-  "https://dailymed.nlm.nih.gov/dailymed/services/v2/spls.json";
+import {
+  externalServiceUrl,
+  publicDataRequestTimeoutMs,
+} from "../config/externalServices.js";
 
 const PAGE_SIZE = 100;
 
 async function searchSpls(params) {
   const query = new URLSearchParams({ ...params, pagesize: String(PAGE_SIZE) });
-  const res = await fetch(`${SPL_SEARCH_URL}?${query}`, { signal: AbortSignal.timeout(8000) });
+  const res = await fetch(`${externalServiceUrl("DAILYMED_API_BASE_URL", "spls.json")}?${query}`, {
+    signal: AbortSignal.timeout(publicDataRequestTimeoutMs()),
+  });
   if (!res.ok) throw new Error(`DailyMed search failed with HTTP ${res.status}`);
 
   const data = await res.json();
@@ -28,9 +31,9 @@ export async function fetchSplListByNdc(ndc) {
 
 export async function fetchSplXml(splId) {
   if (!/^[a-f0-9-]+$/i.test(splId)) throw new Error("DailyMed returned an invalid SPL identifier");
-  const url = `https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/${splId}.xml`;
+  const url = externalServiceUrl("DAILYMED_API_BASE_URL", `spls/${splId}.xml`);
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const res = await fetch(url, { signal: AbortSignal.timeout(publicDataRequestTimeoutMs()) });
   if (!res.ok) throw new Error(`DailyMed label request failed with HTTP ${res.status}`);
 
   const xml = await res.text();
